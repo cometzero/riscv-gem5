@@ -7,15 +7,20 @@ cd "${ROOT}"
 required_files=(
   conf/riscv64_smp.py
   conf/riscv32_mixed.py
+  conf/riscv32_simple.py
   conf/submodules.lock.json
   conf/ip/mailbox_hwsem_map.yaml
   conf/zephyr/cluster0_amp_cpu0.overlay
   conf/zephyr/cluster0_amp_cpu1.overlay
   conf/zephyr/cluster1_smp.overlay
+  conf/zephyr/riscv32_simple.overlay
   docs/ip-implementation-plan.md
   docs/acceptance.md
   workloads/ipc/mailbox_pingpong.md
   workloads/ipc/hwsem_contention.md
+  workloads/zephyr/riscv32_simple/CMakeLists.txt
+  workloads/zephyr/riscv32_simple/prj.conf
+  workloads/zephyr/riscv32_simple/src/main.c
   scripts/bootstrap_sources.sh
   scripts/env.sh
   scripts/build_linux.sh

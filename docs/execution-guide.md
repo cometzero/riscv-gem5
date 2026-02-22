@@ -1,7 +1,7 @@
 # Execution Guide (gem5 RISC-V)
 
 - Date: 2026-02-22
-- Audience: reproducible bring-up for RV32 mixed + RV64 SMP targets
+- Audience: reproducible bring-up for RV32 simple/mixed + RV64 SMP targets
 
 ## 1) Recommendation
 
@@ -10,8 +10,8 @@
 1. source bootstrap (pinned submodule)
 2. build env + gem5 build
 3. Linux + Buildroot build
-4. Zephyr (3 targets) build
-5. non-dry simulation run (RV64, RV32 mixed)
+4. Zephyr (4 targets) build
+5. non-dry simulation run (RV64, RV32 mixed, RV32 simple)
 6. benchmark wrapper + evidence verification
 
 ## 2) Prerequisites
@@ -79,6 +79,7 @@ cd /build/risc-v/riscv-gem5
 scripts/build_zephyr.sh --target cluster0_amp_cpu0 --jobs "$(nproc)"
 scripts/build_zephyr.sh --target cluster0_amp_cpu1 --jobs "$(nproc)"
 scripts/build_zephyr.sh --target cluster1_smp   --jobs "$(nproc)"
+scripts/build_zephyr.sh --target riscv32_simple --jobs "$(nproc)"
 ```
 
 Key outputs:
@@ -86,6 +87,7 @@ Key outputs:
 - `build/zephyr/cluster0_amp_cpu0/zephyr/zephyr.elf`
 - `build/zephyr/cluster0_amp_cpu1/zephyr/zephyr.elf`
 - `build/zephyr/cluster1_smp/zephyr/zephyr.elf`
+- `build/zephyr/riscv32_simple/zephyr/zephyr.elf`
 
 ## 5) Run Simulation (non-dry)
 
@@ -103,12 +105,20 @@ cd /build/risc-v/riscv-gem5
 python3 scripts/run_gem5.py --target riscv32_mixed --mode complex
 ```
 
-## 5.3 Bench wrappers
+## 5.3 RV32 simple (CPU0 only)
+
+```bash
+cd /build/risc-v/riscv-gem5
+python3 scripts/run_gem5.py --target riscv32_simple --mode simple
+```
+
+## 5.4 Bench wrappers
 
 ```bash
 cd /build/risc-v/riscv-gem5
 scripts/run_bench.sh --target riscv64_smp --mode simple
 scripts/run_bench.sh --target riscv32_mixed --mode complex --ipc-case mailbox_pingpong
+scripts/run_bench.sh --target riscv32_simple --mode simple
 ```
 
 ## 6) Verification
@@ -134,7 +144,7 @@ Pass criteria:
 
 - run manifest has `"run_result": { "returncode": 0, ... }`
 - run log contains `**** REAL SIMULATION ****`
-- benchmark manifest exists for both targets
+- benchmark manifest exists for all enabled targets
 
 ## 7) Known Caveat
 
@@ -146,6 +156,6 @@ Pass criteria:
 - [ ] `scripts/bootstrap_sources.sh apply` success
 - [ ] gem5 binary build success
 - [ ] Linux/Buildroot outputs present
-- [ ] Zephyr ELFs (3 targets) present
-- [ ] RV64 and RV32 non-dry manifests generated with RC=0
+- [ ] Zephyr ELFs (4 targets) present
+- [ ] RV64/RV32 mixed/RV32 simple non-dry manifests generated with RC=0
 - [ ] smoke/syntax/integration tests all pass
