@@ -1,0 +1,11 @@
+# Build / runtime artifacts
+build/
+.omx/
+m5out/
+
+# Python
+__pycache__/
+*.pyc
+
+# Generated workload outputs
+workloads/results/
