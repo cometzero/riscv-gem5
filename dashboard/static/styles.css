@@ -1,0 +1,297 @@
+:root {
+  --bg: #0f172a;
+  --card: #111827;
+  --border: #374151;
+  --fg: #e5e7eb;
+  --muted: #9ca3af;
+  --ok: #34d399;
+  --warn: #fbbf24;
+  --err: #f87171;
+  --accent: #60a5fa;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+}
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  background: #0b1220;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.page-header h1 {
+  margin: 0;
+  font-size: 1.5rem;
+}
+
+.page-header p {
+  margin: 4px 0 0;
+  color: var(--muted);
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(360px, 1fr));
+  gap: 14px;
+  padding: 14px;
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px;
+  min-height: 120px;
+}
+
+.card h2,
+.card h3 {
+  margin: 0 0 10px;
+}
+
+.card h3 {
+  margin-top: 12px;
+  font-size: 0.95rem;
+  color: #d1d5db;
+}
+
+.grid-2,
+.grid-3,
+.grid-4 {
+  display: grid;
+  gap: 10px;
+}
+
+.grid-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.grid-3 {
+  grid-template-columns: 1.2fr 1.2fr auto;
+}
+
+.grid-4 {
+  grid-template-columns: 1fr 0.7fr 1fr auto;
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+input,
+select,
+button,
+textarea {
+  background: #0b1220;
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 0.92rem;
+}
+
+button {
+  cursor: pointer;
+  background: #1e293b;
+}
+
+button:hover {
+  border-color: var(--accent);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+progress {
+  width: 100%;
+  height: 14px;
+}
+
+pre,
+textarea {
+  white-space: pre-wrap;
+  margin: 0;
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 0.8rem;
+}
+
+.scrollbox {
+  min-height: 180px;
+  max-height: 300px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px;
+  background: #0b1220;
+}
+
+#config-dot {
+  width: 100%;
+  min-height: 300px;
+  resize: vertical;
+}
+
+.svg-view {
+  width: 100%;
+  min-height: 300px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: white;
+}
+
+.kv-wrap {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.kv-wrap .k {
+  display: inline-block;
+  min-width: 92px;
+  color: var(--muted);
+}
+
+.badge,
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
+.badge.ok {
+  border-color: var(--ok);
+  color: var(--ok);
+}
+
+.badge.warn {
+  border-color: var(--warn);
+  color: var(--warn);
+}
+
+.badge.err {
+  border-color: var(--err);
+  color: var(--err);
+}
+
+.compact-list {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.table-wrap {
+  overflow: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+th,
+td {
+  border-bottom: 1px solid #1f2937;
+  padding: 6px;
+  text-align: left;
+}
+
+tbody tr:hover {
+  background: #0b1220;
+}
+
+tr.clickable {
+  cursor: pointer;
+}
+
+tr.selected {
+  background: #172554;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.button-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.log-error {
+  color: #fca5a5;
+}
+
+.log-warn {
+  color: #fde68a;
+}
+
+.log-info {
+  color: #93c5fd;
+}
+
+.log-debug {
+  color: #d1d5db;
+}
+
+.status-completed {
+  color: var(--ok);
+}
+
+.status-failed {
+  color: var(--err);
+}
+
+.status-running {
+  color: var(--warn);
+}
+
+.status-queued {
+  color: var(--accent);
+}
+
+canvas {
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #0b1220;
+}
+
+@media (max-width: 1200px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+
+  .grid-3,
+  .grid-4,
+  .grid-2 {
+    grid-template-columns: 1fr;
+  }
+}

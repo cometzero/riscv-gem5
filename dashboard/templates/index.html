@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>gem5 Web Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+  </head>
+  <body>
+    <header class="page-header">
+      <div>
+        <h1>gem5 Web Dashboard</h1>
+        <p>Headless-friendly control plane for simulation, logs, and artifacts.</p>
+      </div>
+      <div class="status-pill" id="server-time">--</div>
+    </header>
+
+    <main class="layout">
+      <section class="card">
+        <h2>Run Simulation</h2>
+        <form id="run-form" class="grid-3">
+          <label>
+            Target
+            <select id="target-select" required></select>
+          </label>
+          <label>
+            Workload
+            <select id="workload-select" required></select>
+          </label>
+          <button type="submit" id="run-button">Start Run</button>
+        </form>
+        <p id="workload-description" class="muted">-</p>
+        <div class="kv-wrap">
+          <div><span class="k">Active Job</span><span id="active-job">none</span></div>
+          <div><span class="k">Stage</span><span id="active-stage">idle</span></div>
+          <div><span class="k">Status</span><span id="active-status" class="badge">idle</span></div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Job Queue</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Job</th>
+                <th>Target</th>
+                <th>Workload</th>
+                <th>Status</th>
+                <th>Progress</th>
+                <th>Created</th>
+              </tr>
+            </thead>
+            <tbody id="jobs-body">
+              <tr><td colspan="6" class="muted">No jobs yet.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Progress</h2>
+        <progress id="progress-bar" max="100" value="0"></progress>
+        <div class="kv-wrap">
+          <div><span class="k">Progress</span><span id="progress-value">0%</span></div>
+          <div><span class="k">Started</span><span id="started-at">-</span></div>
+          <div><span class="k">Completed</span><span id="completed-at">-</span></div>
+          <div><span class="k">Return Code</span><span id="returncode">-</span></div>
+        </div>
+
+        <h3>Command</h3>
+        <pre id="command-box" class="mono">-</pre>
+
+        <h3>Recent Output</h3>
+        <pre id="recent-output" class="mono scrollbox">No output yet.</pre>
+      </section>
+
+      <section class="card">
+        <h2>Interpreted Results</h2>
+        <div class="kv-wrap">
+          <div><span class="k">Overall</span><span id="overall-pass" class="badge">unknown</span></div>
+          <div><span class="k">Checks</span><span id="check-ratio">0/0</span></div>
+        </div>
+
+        <h3>Interpretation</h3>
+        <ul id="interpretation-list" class="compact-list">
+          <li class="muted">No interpretation yet.</li>
+        </ul>
+
+        <div class="grid-2">
+          <div>
+            <h3>Metric Chart</h3>
+            <canvas id="metrics-chart" width="640" height="260"></canvas>
+          </div>
+          <div>
+            <h3>Check Chart</h3>
+            <canvas id="checks-chart" width="320" height="260"></canvas>
+          </div>
+        </div>
+
+        <h3>Checks</h3>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Result</th>
+              </tr>
+            </thead>
+            <tbody id="checks-body">
+              <tr><td colspan="2" class="muted">No checks yet.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Logs</h2>
+        <div class="grid-4">
+          <label>
+            Source
+            <select id="log-source"></select>
+          </label>
+          <label>
+            Level
+            <select id="log-level">
+              <option>ALL</option>
+              <option>ERROR</option>
+              <option>WARN</option>
+              <option>INFO</option>
+              <option>DEBUG</option>
+            </select>
+          </label>
+          <label>
+            Query
+            <input id="log-query" type="text" placeholder="kernel panic" />
+          </label>
+          <button id="log-refresh" type="button">Refresh Logs</button>
+        </div>
+        <pre id="log-lines" class="mono scrollbox">No logs loaded.</pre>
+      </section>
+
+      <section class="card">
+        <h2>Config Artifacts</h2>
+        <div class="button-row">
+          <button id="load-svg" type="button">Load SVG</button>
+          <button id="load-dot" type="button">Load DOT</button>
+        </div>
+        <div class="grid-2">
+          <div>
+            <h3>config.dot.svg</h3>
+            <object id="config-svg" type="image/svg+xml" data="" class="svg-view"></object>
+          </div>
+          <div>
+            <h3>config.dot</h3>
+            <textarea id="config-dot" class="mono scrollbox" readonly></textarea>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script src="{{ url_for('static', filename='app.js') }}" defer></script>
+  </body>
+</html>
