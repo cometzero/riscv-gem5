@@ -6,7 +6,8 @@ REPO_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
 source "${SCRIPT_DIR}/env.sh"
 
 TARGET="cluster1_smp"
-APP_DIR="${REPO_ROOT}/sources/zephyr/samples/hello_world"
+APP_DIR=""
+APP_EXPLICIT=0
 BOARD="qemu_riscv32"
 BUILD_ROOT="${REPO_ROOT}/build/zephyr"
 OVERLAY=""
@@ -20,7 +21,7 @@ Usage:
   scripts/build_zephyr.sh [options]
 
 Options:
-  --target <cluster0_amp_cpu0|cluster0_amp_cpu1|cluster1_smp>
+  --target <cluster0_amp_cpu0|cluster0_amp_cpu1|cluster1_smp|riscv32_simple>
   --app <path>               Zephyr application source dir
   --board <board>            Zephyr board name
   --build-root <path>        Zephyr build root (default: build/zephyr)
@@ -44,7 +45,7 @@ run_cmd() {
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --target) TARGET="$2"; shift 2 ;;
-    --app) APP_DIR="$2"; shift 2 ;;
+    --app) APP_DIR="$2"; APP_EXPLICIT=1; shift 2 ;;
     --board) BOARD="$2"; shift 2 ;;
     --build-root) BUILD_ROOT="$2"; shift 2 ;;
     --overlay) OVERLAY="$2"; shift 2 ;;
@@ -57,13 +58,24 @@ while [[ $# -gt 0 ]]; do
 done
 
 case "${TARGET}" in
-  cluster0_amp_cpu0|cluster0_amp_cpu1|cluster1_smp) ;;
+  cluster0_amp_cpu0|cluster0_amp_cpu1|cluster1_smp|riscv32_simple) ;;
   *)
     echo "[ERROR] Invalid target: ${TARGET}" >&2
     usage
     exit 1
     ;;
 esac
+
+if [[ "${APP_EXPLICIT}" -eq 0 ]]; then
+  case "${TARGET}" in
+    riscv32_simple)
+      APP_DIR="${REPO_ROOT}/workloads/zephyr/riscv32_simple"
+      ;;
+    *)
+      APP_DIR="${REPO_ROOT}/sources/zephyr/samples/hello_world"
+      ;;
+  esac
+fi
 
 if [[ -z "${OVERLAY}" ]]; then
   OVERLAY="${REPO_ROOT}/conf/zephyr/${TARGET}.overlay"

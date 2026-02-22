@@ -20,7 +20,7 @@ Usage:
   scripts/run_bench.sh [options]
 
 Options:
-  --target <riscv64_smp|riscv32_mixed>
+  --target <riscv64_smp|riscv32_mixed|riscv32_simple>
   --mode <simple|complex>
   --timestamp <UTC-TS>          Reuse one timestamp for logs/results
   --jobs <n>
@@ -48,7 +48,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 case "${TARGET}" in
-  riscv64_smp|riscv32_mixed) ;;
+  riscv64_smp|riscv32_mixed|riscv32_simple) ;;
   *) echo "[ERROR] Invalid target: ${TARGET}" >&2; exit 1 ;;
 esac
 
@@ -56,6 +56,11 @@ case "${MODE}" in
   simple|complex) ;;
   *) echo "[ERROR] Invalid mode: ${MODE}" >&2; exit 1 ;;
 esac
+
+if [[ "${TARGET}" == "riscv32_simple" && "${MODE}" != "simple" ]]; then
+  echo "[ERROR] riscv32_simple supports only --mode simple" >&2
+  exit 1
+fi
 
 if [[ -z "${TIMESTAMP}" ]]; then
   TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
@@ -83,7 +88,25 @@ echo "[INFO] log_dir=${LOG_DIR}"
 
 python3 "${SCRIPT_DIR}/run_gem5.py" "${GEM5_ARGS[@]}"
 
-if [[ "${MODE}" == "simple" ]]; then
+RUN_MANIFEST="${RESULT_DIR}/run_gem5_${TARGET}_${MODE}.json"
+RUN_RETURNCODE=""
+if [[ -f "${RUN_MANIFEST}" ]]; then
+  RUN_RETURNCODE="$(python3 - "${RUN_MANIFEST}" <<'PY'
+import json, sys
+p = json.load(open(sys.argv[1], encoding='utf-8'))
+rr = p.get("run_result", {})
+print(rr.get("returncode", ""))
+PY
+)"
+fi
+
+if [[ "${TARGET}" == "riscv32_simple" ]]; then
+  WORKLOAD_DESC="single-core Zephyr boot + cpu0 simple workload"
+  BENCH_STEPS=(
+    "zephyr-boot-check"
+    "cpu0-loop-workload"
+  )
+elif [[ "${MODE}" == "simple" ]]; then
   WORKLOAD_DESC="smoke + memory micro-benchmark"
   BENCH_STEPS=(
     "boot-smoke"
@@ -111,6 +134,8 @@ cat > "${MANIFEST_JSON}" <<EOF2
   "mode": "${MODE}",
   "dry_run": ${DRY_RUN},
   "status": "${STATUS}",
+  "run_manifest": "${RUN_MANIFEST}",
+  "run_returncode": ${RUN_RETURNCODE:-0},
   "jobs": ${JOBS},
   "ipc_case": "${IPC_CASE}",
   "duration_sec": ${DURATION_SEC},

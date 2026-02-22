@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
-"""Run gem5 simulations for riscv64_smp and riscv32_mixed targets.
+"""Run gem5 simulations for riscv64_smp, riscv32_mixed, riscv32_simple targets.
 
 - riscv64_smp: Full-system Linux boot flow (deprecated fs_linux config backend).
 - riscv32_mixed: three bare-metal Zephyr runs (AMP cpu0/cpu1 + SMP cluster1) to
   approximate mixed AMP/SMP execution in this phase.
+- riscv32_simple: single-core bare-metal Zephyr run (CPU0 only).
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import shlex
 import subprocess
 import sys
@@ -57,10 +59,10 @@ def default_riscv_config() -> str:
 
 def parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
-        description="Run gem5 for riscv64_smp/riscv32_mixed",
+        description="Run gem5 for riscv64_smp/riscv32_mixed/riscv32_simple",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    p.add_argument("--target", choices=["riscv64_smp", "riscv32_mixed"], required=True)
+    p.add_argument("--target", choices=["riscv64_smp", "riscv32_mixed", "riscv32_simple"], required=True)
     p.add_argument("--mode", choices=["simple", "complex"], default="simple")
     p.add_argument("--gem5-bin", default="sources/gem5/build/RISCV/gem5.opt")
     p.add_argument("--config", default="")
@@ -78,6 +80,7 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--amp-cpu0-elf", default="build/zephyr/cluster0_amp_cpu0/zephyr/zephyr.elf")
     p.add_argument("--amp-cpu1-elf", default="build/zephyr/cluster0_amp_cpu1/zephyr/zephyr.elf")
     p.add_argument("--smp-elf", default="build/zephyr/cluster1_smp/zephyr/zephyr.elf")
+    p.add_argument("--simple-elf", default="build/zephyr/riscv32_simple/zephyr/zephyr.elf")
 
     # Runtime knobs
     p.add_argument("--cpu-type", default="TimingSimpleCPU")
@@ -136,10 +139,9 @@ def rv64_command(
     return cmd, disk_image, kernel_elf
 
 
-def rv32_commands(args: argparse.Namespace, config_path: Path, logs_dir: Path) -> List[Tuple[str, List[str]]]:
+def rv32_commands(args: argparse.Namespace, config_path: Path, logs_dir: Path) -> List[Tuple[str, Path, List[str]]]:
     base = [
         args.gem5_bin,
-        f"--outdir={logs_dir}",
         str(config_path),
         "--cpu-type",
         args.cpu_type,
@@ -157,62 +159,120 @@ def rv32_commands(args: argparse.Namespace, config_path: Path, logs_dir: Path) -
         "--riscv-32bits",
     ]
 
-    runs = [
+    run_defs = [
         (
             "amp_cpu0",
-            base
-            + [
-                "--num-cpus",
-                "1",
-                "--l2_size",
-                "256kB",
-                "--kernel",
-                args.amp_cpu0_elf,
-            ],
+            "256kB",
+            "1",
+            args.amp_cpu0_elf,
         ),
         (
             "amp_cpu1",
-            base
-            + [
-                "--num-cpus",
-                "1",
-                "--l2_size",
-                "256kB",
-                "--kernel",
-                args.amp_cpu1_elf,
-            ],
+            "256kB",
+            "1",
+            args.amp_cpu1_elf,
         ),
         (
             "cluster1_smp",
-            base
-            + [
-                "--num-cpus",
-                "4",
-                "--l2_size",
-                "512kB",
-                "--kernel",
-                args.smp_elf,
-            ],
+            "512kB",
+            "4",
+            args.smp_elf,
         ),
     ]
+
+    runs: List[Tuple[str, Path, List[str]]] = []
+    for name, l2_size, num_cpus, elf in run_defs:
+        run_outdir = logs_dir / name
+        cmd = [
+            args.gem5_bin,
+            f"--outdir={run_outdir}",
+            *base[1:],
+            "--num-cpus",
+            num_cpus,
+            "--l2_size",
+            l2_size,
+            "--kernel",
+            elf,
+        ]
+        runs.append((name, run_outdir, cmd))
     return runs
+
+
+def rv32_simple_command(
+    args: argparse.Namespace, config_path: Path, logs_dir: Path
+) -> Tuple[List[str], str]:
+    # Keep a longer default runtime for this bring-up target so Zephyr
+    # application markers can be emitted reliably.
+    abs_max_tick = args.max_ticks_complex if args.mode == "simple" else max_ticks_for_mode(args)
+    cmd = [
+        args.gem5_bin,
+        f"--outdir={logs_dir}",
+        str(config_path),
+        "--cpu-type",
+        args.cpu_type,
+        "--mem-size",
+        "512MB",
+        "--caches",
+        "--l2cache",
+        "--l1i_size",
+        "16kB",
+        "--l1d_size",
+        "16kB",
+        "--l2_size",
+        "256kB",
+        "--abs-max-tick",
+        str(abs_max_tick),
+        "--bare-metal",
+        "--riscv-32bits",
+        "--num-cpus",
+        "1",
+        "--kernel",
+        args.simple_elf,
+    ]
+    return cmd, args.simple_elf
 
 
 def quoted(cmd: List[str]) -> str:
     return " ".join(shlex.quote(x) for x in cmd)
 
 
-def read_markers(log_path: Path, markers: List[str]) -> Dict[str, bool]:
-    if not log_path.exists():
-        return {m: False for m in markers}
-    txt = log_path.read_text(encoding="utf-8", errors="ignore")
+def read_markers_from_paths(paths: List[Path], markers: List[str]) -> Dict[str, bool]:
+    txt = ""
+    for path in paths:
+        if path.exists():
+            txt += path.read_text(encoding="utf-8", errors="ignore")
+            txt += "\n"
     return {m: (m in txt) for m in markers}
+
+
+def read_stats_counter(stats_path: Path, key: str) -> int:
+    if not stats_path.exists():
+        return -1
+    for line in stats_path.read_text(encoding="utf-8", errors="ignore").splitlines():
+        columns = line.split()
+        if len(columns) >= 2 and columns[0] == key:
+            try:
+                return int(float(columns[1]))
+            except ValueError:
+                return -1
+    return -1
 
 
 def run_one(cmd: List[str], log_path: Path, timeout_sec: int) -> Dict[str, object]:
     with log_path.open("w", encoding="utf-8") as fp:
+        env = os.environ.copy()
+        gem5_configs = str(Path("sources/gem5/configs").resolve())
+        prev = env.get("PYTHONPATH", "")
+        env["PYTHONPATH"] = f"{gem5_configs}:{prev}" if prev else gem5_configs
         try:
-            proc = subprocess.run(cmd, stdout=fp, stderr=subprocess.STDOUT, check=False, timeout=timeout_sec)
+            proc = subprocess.run(
+                cmd,
+                stdout=fp,
+                stderr=subprocess.STDOUT,
+                check=False,
+                timeout=timeout_sec,
+                env=env,
+            )
             return {"returncode": proc.returncode, "timeout": False}
         except subprocess.TimeoutExpired:
             return {"returncode": 124, "timeout": True}
@@ -279,9 +339,14 @@ def main() -> int:
         if not disk_image:
             print("[WARN] Running without disk image (--allow-no-disk).")
         run_result = run_one(cmd, run_log, args.timeout_sec)
-        markers = read_markers(run_log, ["OpenSBI", "Linux version", "Kernel panic"])
+        terminal_log = logs_dir / "system.platform.terminal"
+        markers = read_markers_from_paths(
+            [run_log, terminal_log],
+            ["OpenSBI", "Linux version", "Kernel panic"],
+        )
         manifest.update({
             "run_log": str(run_log),
+            "terminal_log": str(terminal_log),
             "run_result": run_result,
             "markers": markers,
         })
@@ -290,9 +355,62 @@ def main() -> int:
         print(f"[OK] Manifest: {manifest_path}")
         return int(run_result["returncode"])
 
+    if args.target == "riscv32_simple":
+        cmd, simple_elf = rv32_simple_command(args, config_path, logs_dir)
+        manifest["commands"] = [cmd]
+        manifest["simple_elf"] = simple_elf
+
+        if not Path(simple_elf).exists():
+            missing.append(f"simple_elf: {simple_elf}")
+
+        if args.dry_run:
+            print("[INFO] DRY-RUN mode")
+            for item in missing:
+                print(f"[WARN] Missing path: {item}")
+            print(f"[INFO] command={quoted(cmd)}")
+            manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+            print(f"[OK] Manifest: {manifest_path}")
+            return 0
+
+        if missing:
+            for item in missing:
+                print(f"[ERROR] Missing path: {item}", file=sys.stderr)
+            manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+            return 2
+
+        run_log = logs_dir / "run_riscv32_simple.log"
+        print(f"[INFO] Executing: {quoted(cmd)}")
+        run_result = run_one(cmd, run_log, args.timeout_sec)
+        terminal_log = logs_dir / "system.platform.terminal"
+        stats_path = logs_dir / "stats.txt"
+        markers = read_markers_from_paths(
+            [run_log, terminal_log],
+            [
+                "*** Booting Zephyr OS",
+                "RISCV32 SIMPLE WORKLOAD START",
+                "RISCV32 SIMPLE WORKLOAD DONE",
+                "Kernel panic",
+                "panic",
+            ],
+        )
+        sim_insts = read_stats_counter(stats_path, "simInsts")
+        manifest.update({
+            "run_log": str(run_log),
+            "terminal_log": str(terminal_log),
+            "stats_path": str(stats_path),
+            "run_result": run_result,
+            "markers": markers,
+            "sim_insts": sim_insts,
+        })
+        manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+        print(f"[INFO] run_log={run_log}")
+        print(f"[INFO] terminal_log={terminal_log}")
+        print(f"[OK] Manifest: {manifest_path}")
+        return int(run_result["returncode"])
+
     # riscv32_mixed
     runs = rv32_commands(args, config_path, logs_dir)
-    manifest["commands"] = [cmd for _, cmd in runs]
+    manifest["commands"] = [cmd for _, _, cmd in runs]
 
     for name, elf in [
         ("amp_cpu0_elf", args.amp_cpu0_elf),
@@ -306,7 +424,7 @@ def main() -> int:
         print("[INFO] DRY-RUN mode")
         for item in missing:
             print(f"[WARN] Missing path: {item}")
-        for name, cmd in runs:
+        for name, _, cmd in runs:
             print(f"[INFO] command[{name}]={quoted(cmd)}")
         manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
         print(f"[OK] Manifest: {manifest_path}")
@@ -320,13 +438,28 @@ def main() -> int:
 
     run_results: Dict[str, object] = {}
     failed = 0
-    for name, cmd in runs:
+    for name, run_outdir, cmd in runs:
         run_log = logs_dir / f"run_riscv32_mixed_{name}.log"
         print(f"[INFO] Executing[{name}]: {quoted(cmd)}")
         result = run_one(cmd, run_log, args.timeout_sec)
-        markers = read_markers(run_log, ["*** Booting Zephyr OS", "Kernel panic", "panic"])
+        terminal_log = run_outdir / "system.platform.terminal"
+        stats_path = run_outdir / "stats.txt"
+        markers = read_markers_from_paths(
+            [run_log, terminal_log],
+            [
+                "*** Booting Zephyr OS",
+                "Hello World!",
+                "Kernel panic",
+                "panic",
+            ],
+        )
+        sim_insts = read_stats_counter(stats_path, "simInsts")
         run_results[name] = {
             "run_log": str(run_log),
+            "run_outdir": str(run_outdir),
+            "terminal_log": str(terminal_log),
+            "stats_path": str(stats_path),
+            "sim_insts": sim_insts,
             "result": result,
             "markers": markers,
         }
