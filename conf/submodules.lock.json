@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "generated_at_utc": "2026-02-22T02:37:54Z",
+  "policy": {
+    "pin_required": true,
+    "update_cadence": "biweekly",
+    "linux_shallow": {
+      "depth": 1,
+      "history_note": "Keep shallow clone and align with v5.15+ history policy"
+    }
+  },
+  "modules": [
+    {
+      "name": "gem5",
+      "path": "sources/gem5",
+      "url": "https://github.com/gem5/gem5.git",
+      "tracking_ref": "refs/heads/stable",
+      "revision": "7a2b0e413d06c5ce7097104abef3b1d9eaabca91"
+    },
+    {
+      "name": "linux",
+      "path": "sources/linux",
+      "url": "https://github.com/torvalds/linux.git",
+      "tracking_ref": "refs/heads/master",
+      "revision": "fa5c82f4d2bbde10e9fd3a32aecacfe3813919ba"
+    },
+    {
+      "name": "buildroot",
+      "path": "sources/buildroot",
+      "url": "https://github.com/buildroot/buildroot.git",
+      "tracking_ref": "refs/heads/master",
+      "revision": "f90d38dafcadf959e6a0383376639a137a8bae4d"
+    },
+    {
+      "name": "zephyr",
+      "path": "sources/zephyr",
+      "url": "https://github.com/zephyrproject-rtos/zephyr.git",
+      "tracking_ref": "refs/heads/main",
+      "revision": "a6fb8b8a19f9052bd21590e3fab03b2d2cff7cb1"
+    },
+    {
+      "name": "zephyr-modules/libmetal",
+      "path": "sources/zephyr-modules/libmetal",
+      "url": "https://github.com/OpenAMP/libmetal.git",
+      "tracking_ref": "refs/heads/main",
+      "revision": "ece95f0e71811c44a4c23d9a1514f338ccf60c75"
+    },
+    {
+      "name": "zephyr-modules/open-amp",
+      "path": "sources/zephyr-modules/open-amp",
+      "url": "https://github.com/OpenAMP/open-amp.git",
+      "tracking_ref": "refs/heads/main",
+      "revision": "59e843f3efd788c181436066298a3e03273bc4a1"
+    }
+  ],
+  "zephyr_no_west_placeholders": {
+    "root": "sources/zephyr-modules",
+    "required": [
+      {
+        "name": "libmetal",
+        "path": "sources/zephyr-modules/libmetal"
+      },
+      {
+        "name": "open-amp",
+        "path": "sources/zephyr-modules/open-amp"
+      }
+    ],
+    "optional": [
+      {
+        "name": "mbedtls",
+        "path": "sources/zephyr-modules/mbedtls"
+      },
+      {
+        "name": "littlefs",
+        "path": "sources/zephyr-modules/littlefs"
+      }
+    ]
+  }
+}

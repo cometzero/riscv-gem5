@@ -1,0 +1,18 @@
+[submodule "sources/gem5"]
+	path = sources/gem5
+	url = https://github.com/gem5/gem5.git
+[submodule "sources/linux"]
+	path = sources/linux
+	url = https://github.com/torvalds/linux.git
+[submodule "sources/buildroot"]
+	path = sources/buildroot
+	url = https://github.com/buildroot/buildroot.git
+[submodule "sources/zephyr"]
+	path = sources/zephyr
+	url = https://github.com/zephyrproject-rtos/zephyr.git
+[submodule "sources/zephyr-modules/libmetal"]
+	path = sources/zephyr-modules/libmetal
+	url = https://github.com/OpenAMP/libmetal.git
+[submodule "sources/zephyr-modules/open-amp"]
+	path = sources/zephyr-modules/open-amp
+	url = https://github.com/OpenAMP/open-amp.git
