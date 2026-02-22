@@ -1,12 +1,41 @@
 /* Cluster1 SMP overlay placeholder (no-west flow) */
 / {
+  chosen {
+    zephyr,console = &uart2;
+    zephyr,shell-uart = &uart2;
+  };
+
+  uart1: uart@10001000 {
+    compatible = "ns16550";
+    reg = <0x10001000 0x100>;
+    interrupt-parent = <&plic>;
+    interrupts = <0x0a 1>;
+    clock-frequency = <0x384000>;
+    reg-shift = <0>;
+    status = "disabled";
+  };
+
+  uart2: uart@10002000 {
+    compatible = "ns16550";
+    reg = <0x10002000 0x100>;
+    interrupt-parent = <&plic>;
+    interrupts = <0x0a 1>;
+    clock-frequency = <0x384000>;
+    reg-shift = <0>;
+    status = "okay";
+  };
+
   zephyr,user {
     omx-role = "cluster1-smp";
-    omx-uart-policy = "shared";
+    omx-uart-policy = "uart2-shared";
     omx-mailbox = "placeholder";
     omx-hwsem = "placeholder";
   };
 };
+
+&uart0 { status = "disabled"; };
+&uart1 { status = "disabled"; };
+&uart2 { status = "okay"; };
 
 &ram0 {
   reg = <0x88000000 0x08000000>;

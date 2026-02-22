@@ -1,12 +1,41 @@
 /* Cluster0 AMP CPU0 overlay placeholder (no-west flow) */
 / {
+  chosen {
+    zephyr,console = &uart0;
+    zephyr,shell-uart = &uart0;
+  };
+
+  uart1: uart@10001000 {
+    compatible = "ns16550";
+    reg = <0x10001000 0x100>;
+    interrupt-parent = <&plic>;
+    interrupts = <0x0a 1>;
+    clock-frequency = <0x384000>;
+    reg-shift = <0>;
+    status = "disabled";
+  };
+
+  uart2: uart@10002000 {
+    compatible = "ns16550";
+    reg = <0x10002000 0x100>;
+    interrupt-parent = <&plic>;
+    interrupts = <0x0a 1>;
+    clock-frequency = <0x384000>;
+    reg-shift = <0>;
+    status = "disabled";
+  };
+
   zephyr,user {
     omx-role = "cluster0-amp-cpu0";
-    omx-uart-policy = "per-core";
+    omx-uart-policy = "uart0";
     omx-mailbox = "placeholder";
     omx-hwsem = "placeholder";
   };
 };
+
+&uart0 { status = "okay"; };
+&uart1 { status = "disabled"; };
+&uart2 { status = "disabled"; };
 
 &ram0 {
   reg = <0x81000000 0x02000000>;

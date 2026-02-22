@@ -133,7 +133,7 @@ def build_plan(args: argparse.Namespace) -> PlatformPlan:
             entry=args.amp_cpu0_base,
             l1i=l1i,
             l1d=l1d,
-            uart="uart_amp_cpu0",
+            uart="UART0",
         ),
         CoreConfig(
             cpu_id=1,
@@ -143,7 +143,7 @@ def build_plan(args: argparse.Namespace) -> PlatformPlan:
             entry=args.amp_cpu1_base,
             l1i=l1i,
             l1d=l1d,
-            uart="uart_amp_cpu1",
+            uart="UART1",
         ),
     ]
     for cpu_id in [2, 3, 4, 5]:
@@ -156,7 +156,7 @@ def build_plan(args: argparse.Namespace) -> PlatformPlan:
                 entry=args.cluster1_smp_base,
                 l1i=l1i,
                 l1d=l1d,
-                uart="uart_cluster1_smp_shared",
+                uart="UART2",
             )
         )
 
@@ -166,14 +166,14 @@ def build_plan(args: argparse.Namespace) -> PlatformPlan:
             mode="AMP",
             cores=[0, 1],
             l2=l2_cluster0,
-            uart="per-core (cpu0/cpu1)",
+            uart="UART0/CPU0 + UART1/CPU1",
         ),
         ClusterConfig(
             name="cluster1",
             mode="SMP",
             cores=[2, 3, 4, 5],
             l2=l2_cluster1,
-            uart="shared",
+            uart="UART2 shared by CPU2-5",
         ),
     ]
 
@@ -231,10 +231,12 @@ def _run_gem5_runtime(args: argparse.Namespace) -> int:
         RiscvRTC,
         RiscvSystem,
         SystemXBar,
+        Terminal,
         Root,
         SimpleMemory,
         SrcClockDomain,
         TimingSimpleCPU,
+        Uart8250,
         VoltageDomain,
     )
     from m5.util import addToPath  # type: ignore
@@ -299,6 +301,28 @@ def _run_gem5_runtime(args: argparse.Namespace) -> int:
     system.platform.clint.int_pin = system.platform.rtc.int_pin
     system.platform.setNumCores(args.num_cpus)
 
+    # UART topology:
+    # - UART0 (0x10000000): Zephyr RTOS Instance 0 (CPU0 AMP)
+    # - UART1 (0x10001000): Zephyr RTOS Instance 1 (CPU1 AMP)
+    # - UART2 (0x10002000): Zephyr RTOS Instance 2 (CPU2-5 SMP)
+    system.platform.terminal1 = Terminal(port=3457, number=1)
+    system.platform.terminal2 = Terminal(port=3458, number=2)
+    system.platform.uart.device = system.platform.terminal
+    system.platform.uart1 = Uart8250(
+        pio_addr=0x10001000,
+        platform=system.platform,
+        device=system.platform.terminal1,
+    )
+    system.platform.uart2 = Uart8250(
+        pio_addr=0x10002000,
+        platform=system.platform,
+        device=system.platform.terminal2,
+    )
+    extra_uart_ranges = [
+        AddrRange(system.platform.uart1.pio_addr, size=system.platform.uart1.pio_size),
+        AddrRange(system.platform.uart2.pio_addr, size=system.platform.uart2.pio_size),
+    ]
+
     system.iobus.cpu_side_ports = system.platform.pci_host.up_request_port()
     system.iobus.mem_side_ports = system.platform.pci_host.up_response_port()
     system.platform.pci_bus.cpu_side_ports = system.platform.pci_host.down_request_port()
@@ -308,7 +332,7 @@ def _run_gem5_runtime(args: argparse.Namespace) -> int:
     system.bridge = Bridge(delay="50ns")
     system.bridge.mem_side_port = system.iobus.cpu_side_ports
     system.bridge.cpu_side_port = system.membus.mem_side_ports
-    system.bridge.ranges = system.platform._off_chip_ranges()
+    system.bridge.ranges = [*system.platform._off_chip_ranges(), *extra_uart_ranges]
 
     system.iobridge = Bridge(delay="50ns", ranges=system.mem_ranges)
     system.iobridge.cpu_side_port = system.iobus.mem_side_ports
@@ -316,6 +340,8 @@ def _run_gem5_runtime(args: argparse.Namespace) -> int:
 
     system.platform.attachOnChipIO(system.membus)
     system.platform.attachOffChipIO(system.iobus)
+    system.platform.uart1.pio = system.iobus.mem_side_ports
+    system.platform.uart2.pio = system.iobus.mem_side_ports
     system.platform.attachPlic()
 
     system.cluster0_bus = L2XBar()
@@ -328,7 +354,11 @@ def _run_gem5_runtime(args: argparse.Namespace) -> int:
     system.cluster1_l2.mem_side = system.membus.cpu_side_ports
 
     system.cpu = [cpu_cls(clk_domain=system.cpu_clk_domain, cpu_id=i) for i in range(args.num_cpus)]
-    uncacheable = [*system.platform._on_chip_ranges(), *system.platform._off_chip_ranges()]
+    uncacheable = [
+        *system.platform._on_chip_ranges(),
+        *system.platform._off_chip_ranges(),
+        *extra_uart_ranges,
+    ]
     for i, cpu in enumerate(system.cpu):
         cpu.ArchISA.riscv_type = "RV32"
         cpu.createThreads()
@@ -362,6 +392,12 @@ def _run_gem5_runtime(args: argparse.Namespace) -> int:
         f"amp_cpu1={args.amp_cpu1_elf}",
         f"smp={args.smp_elf}",
         f"max_ticks={args.max_ticks}",
+    )
+    print(
+        "[INFO] uart map:",
+        "UART0=CPU0(system.platform.terminal)",
+        "UART1=CPU1(system.platform.terminal1)",
+        "UART2=CPU2-5 SMP(system.platform.terminal2)",
     )
 
     m5.instantiate()
