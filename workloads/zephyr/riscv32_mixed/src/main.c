@@ -8,6 +8,7 @@
 #include <zephyr/sys/util.h>
 
 #define OMX_ROLE DT_PROP(DT_PATH(zephyr_user), omx_role)
+#define OMX_UART_POLICY DT_PROP(DT_PATH(zephyr_user), omx_uart_policy)
 
 LOG_MODULE_REGISTER(riscv32_mixed, LOG_LEVEL_INF);
 
@@ -130,14 +131,17 @@ static uint32_t role_ready_mask(void)
 int main(void)
 {
 	const char *dt_role = OMX_ROLE;
+	const char *uart_policy = OMX_UART_POLICY;
 	const struct workload_profile *profile = resolve_profile(dt_role);
 	const char *marker_role = profile ? profile->marker_role : "UNKNOWN";
 	uint32_t phases = profile ? profile->phases : 3U;
 	uint32_t loops_per_phase = profile ? profile->loops_per_phase : 1200U;
 	uint32_t total = 0U;
 
-	printk("RISCV32 MIXED %s WORKLOAD START role=%s\n", marker_role, dt_role);
-	LOG_INF("mixed workload role=%s marker=%s", dt_role, marker_role);
+	printk("RISCV32 MIXED %s WORKLOAD START role=%s uart=%s\n", marker_role, dt_role,
+	       uart_policy);
+	printk("RISCV32 MIXED ROLE_UART role=%s uart=%s\n", dt_role, uart_policy);
+	LOG_INF("mixed workload role=%s marker=%s uart=%s", dt_role, marker_role, uart_policy);
 	LOG_INF("mixed workload verbose=%s",
 		IS_ENABLED(CONFIG_RISCV32_MIXED_VERBOSE) ? "enabled" : "disabled");
 
