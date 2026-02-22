@@ -197,8 +197,9 @@ Pass criteria:
 
 ## 7) Known Caveat
 
-- Deprecated `fs_linux.py` path with local `build/linux/vmlinux` can fail with invalid mapping/panic.
-- 현재 안정 경로는 resource kernel fallback + Buildroot rootfs 조합이다.
+- `riscv64_smp` 는 `fs_linux.py` 경로에서 OpenSBI bootloader(`fw_jump.elf`)를 함께 지정해야
+  kernel mapping fatal을 피할 수 있다.
+- `scripts/run_gem5.py`는 `fw_jump.elf`를 자동 탐색하여 `--bootloader`를 주입한다.
 
 ## 8) Definition of Done (DoD)
 

@@ -54,6 +54,17 @@ def auto_disk_image() -> str:
     )
 
 
+def auto_bootloader() -> str:
+    return find_first_existing(
+        [
+            "build/buildroot/images/fw_jump.elf",
+            "sources/buildroot/output/images/fw_jump.elf",
+            "build/buildroot/images/fw_dynamic.elf",
+            "sources/buildroot/output/images/fw_dynamic.elf",
+        ]
+    )
+
+
 def default_riscv_config() -> str:
     return "sources/gem5/configs/deprecated/example/riscv/fs_linux.py"
 
@@ -128,6 +139,7 @@ def parser() -> argparse.ArgumentParser:
 
     # RV64 Linux inputs
     p.add_argument("--kernel", default="build/linux/arch/riscv/boot/Image")
+    p.add_argument("--bootloader", default="")
     p.add_argument("--disk-image", default="")
     p.add_argument("--allow-no-disk", action="store_true")
     p.add_argument(
@@ -202,8 +214,9 @@ def max_ticks_for_mode(args: argparse.Namespace) -> int:
 
 def rv64_command(
     args: argparse.Namespace, config_path: Path, logs_dir: Path
-) -> Tuple[List[str], str, str]:
+) -> Tuple[List[str], str, str, str]:
     disk_image = args.disk_image or auto_disk_image()
+    bootloader = args.bootloader or auto_bootloader()
     kernel_elf = auto_kernel_elf(args.kernel) or args.kernel
     cmd = [
         args.gem5_bin,
@@ -230,9 +243,11 @@ def rv64_command(
         "--abs-max-tick",
         str(max_ticks_for_mode(args)),
     ]
+    if bootloader:
+        cmd.extend(["--bootloader", bootloader])
     if disk_image:
         cmd.extend(["--disk-image", disk_image])
-    return cmd, disk_image, kernel_elf
+    return cmd, disk_image, kernel_elf, bootloader
 
 
 def rv32_mixed_command(
@@ -486,13 +501,16 @@ def main() -> int:
     }
 
     if args.target == "riscv64_smp":
-        cmd, disk_image, kernel_elf = rv64_command(args, config_path, logs_dir)
+        cmd, disk_image, kernel_elf, bootloader = rv64_command(args, config_path, logs_dir)
         manifest["commands"] = [cmd]
         manifest["disk_image"] = disk_image
         manifest["kernel_elf"] = kernel_elf
+        manifest["bootloader"] = bootloader
 
         if not Path(kernel_elf).exists():
             missing.append(f"kernel ELF: {kernel_elf}")
+        if not bootloader:
+            missing.append("bootloader: not found (expected fw_jump.elf)")
         if not disk_image and not args.allow_no_disk:
             missing.append("disk image: not found (expected rootfs.ext2)")
 
@@ -521,18 +539,39 @@ def main() -> int:
         terminal_log = logs_dir / "system.platform.terminal"
         markers = read_markers_from_paths(
             [run_log, terminal_log],
-            ["OpenSBI", "Linux version", "Kernel panic"],
+            [
+                "OpenSBI",
+                "Linux version",
+                "Loaded bootloader",
+                "Loaded kernel",
+                "simulate() limit reached",
+                "Kernel panic",
+                "fatal:",
+            ],
         )
+        checks = {
+            "returncode_ok": int(run_result["returncode"]) == 0,
+            "required_markers_ok": markers["Loaded bootloader"] and markers["Loaded kernel"],
+            "terminal_markers_ok": (
+                markers["OpenSBI"] or markers["Linux version"] or markers["simulate() limit reached"]
+            ),
+            "panic_free": (not markers["Kernel panic"]) and (not markers["fatal:"]),
+        }
         manifest.update({
             "run_log": str(run_log),
             "terminal_log": str(terminal_log),
             "run_result": run_result,
             "markers": markers,
+            "checks": checks,
+            "validation": {
+                "single_run": True,
+                "all_passed": all(checks.values()),
+            },
         })
         manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
         print(f"[INFO] run_log={run_log}")
         print(f"[OK] Manifest: {manifest_path}")
-        return int(run_result["returncode"])
+        return 1 if not all(checks.values()) else int(run_result["returncode"])
 
     if args.target == "riscv32_simple":
         cmd, simple_elf = rv32_simple_command(args, config_path, logs_dir)
