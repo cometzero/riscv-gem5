@@ -91,6 +91,10 @@ Note:
   `CONFIG_RISCV32_MIXED_VERBOSE` in `workloads/zephyr/riscv32_mixed/prj.conf`.
 - one-gem5 mixed boot trampoline is auto-built by `run_gem5.py` and can be
   built manually via `scripts/build_riscv32_mixed_boot.sh`.
+- mixed UART split policy:
+  - `cluster0_amp_cpu0` -> `UART0` (`0x10000000`)
+  - `cluster0_amp_cpu1` -> `UART1` (`0x10001000`)
+  - `cluster1_smp` -> `UART2` (`0x10002000`)
 
 Key outputs:
 
@@ -148,6 +152,7 @@ bash tests/integration/test_run_dry.sh
 cd /build/risc-v/riscv-gem5
 find workloads/results -maxdepth 2 -name 'run_gem5_*.json' | sort | tail -n 6
 find build/logs -maxdepth 4 -name 'run_*.log' | sort | tail -n 6
+find build/logs/riscv32_mixed -maxdepth 3 -name 'system.platform.terminal*' | sort | tail -n 9
 ```
 
 Quick access symlinks:
@@ -165,9 +170,14 @@ Pass criteria:
 - `riscv32_mixed` run manifest has exactly one command (`commands` length = 1)
 - `riscv32_mixed` run manifest has `checks` with all fields `true`
   (`returncode_ok`, `required_markers_ok`, `terminal_markers_ok`, `panic_free`)
-- `riscv32_mixed` run log contains one-simulator sync marker:
+- `riscv32_mixed` run manifest `terminal_logs` includes:
+  `system.platform.terminal`, `system.platform.terminal1`, `system.platform.terminal2`
+- `riscv32_mixed` terminal logs contain one-simulator sync marker:
   `RISCV32 MIXED ROLE_SYNC mask=0x7 status=READY`
-- `riscv32_mixed` manifest `commands` length is `1` (single gem5 process)
+- `riscv32_mixed` terminal logs contain DONE markers for all instances:
+  - `RISCV32 MIXED AMP CPU0 WORKLOAD DONE`
+  - `RISCV32 MIXED AMP CPU1 WORKLOAD DONE`
+  - `RISCV32 MIXED CLUSTER1 SMP WORKLOAD DONE`
 - benchmark manifest exists for all enabled targets
 
 ## 7) Known Caveat

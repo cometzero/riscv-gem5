@@ -284,6 +284,7 @@ def rv32_mixed_command(
         },
     ]
     role_markers: List[str] = []
+    done_markers: List[str] = []
     for item in assignments:
         marker_role = str(item["marker_role"])
         dt_role = str(item["dt_role"])
@@ -294,11 +295,9 @@ def rv32_mixed_command(
                 f"role={dt_role}",
             ]
         )
+        done_markers.append(f"RISCV32 MIXED {marker_role} WORKLOAD DONE")
 
-    required_markers = [
-        "RISCV32 MIXED CLUSTER1 SMP WORKLOAD DONE",
-        "RISCV32 MIXED ROLE_SYNC mask=0x7 status=READY",
-    ]
+    required_markers = done_markers + ["RISCV32 MIXED ROLE_SYNC mask=0x7 status=READY"]
 
     return cmd, assignments, required_markers, role_markers
 
@@ -439,6 +438,15 @@ def run_one(cmd: List[str], log_path: Path, timeout_sec: int) -> Dict[str, objec
             return {"returncode": proc.returncode, "timeout": False}
         except subprocess.TimeoutExpired:
             return {"returncode": 124, "timeout": True}
+
+
+def mixed_terminal_logs(logs_dir: Path) -> List[Path]:
+    candidates = sorted(
+        path for path in logs_dir.glob("system.platform.terminal*") if path.is_file()
+    )
+    if candidates:
+        return candidates
+    return [logs_dir / "system.platform.terminal"]
 
 
 def main() -> int:
@@ -622,15 +630,20 @@ def main() -> int:
     run_log = logs_dir / "run_riscv32_mixed.log"
     print(f"[INFO] Executing: {quoted(cmd)}")
     run_result = run_one(cmd, run_log, args.timeout_sec)
-    terminal_log = logs_dir / "system.platform.terminal"
+    terminal_logs = mixed_terminal_logs(logs_dir)
+    terminal_log = terminal_logs[0]
     stats_path = logs_dir / "stats.txt"
-    terminal_markers = read_markers_from_paths([terminal_log], workload_markers, allow_interleaved=True)
+    terminal_markers = read_markers_from_paths(
+        terminal_logs,
+        workload_markers,
+        allow_interleaved=True,
+    )
     workload_and_role_markers = read_markers_from_paths(
-        [run_log, terminal_log],
+        [run_log, *terminal_logs],
         workload_markers + role_markers,
         allow_interleaved=True,
     )
-    panic_markers = read_markers_from_paths([run_log, terminal_log], ["Kernel panic", "panic"])
+    panic_markers = read_markers_from_paths([run_log, *terminal_logs], ["Kernel panic", "panic"])
     markers = {**workload_and_role_markers, **panic_markers}
     sim_insts = read_stats_counter(stats_path, "simInsts")
     terminal_required_ok = all(terminal_markers[m] for m in workload_markers)
@@ -649,6 +662,7 @@ def main() -> int:
         {
             "run_log": str(run_log),
             "terminal_log": str(terminal_log),
+            "terminal_logs": [str(path) for path in terminal_logs],
             "stats_path": str(stats_path),
             "run_result": run_result,
             "terminal_markers": terminal_markers,
