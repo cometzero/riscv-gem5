@@ -1,18 +1,18 @@
 [submodule "sources/gem5"]
 	path = sources/gem5
-	url = https://github.com/gem5/gem5.git
+	url = git@github.com:cometzero/gem5.git
 [submodule "sources/linux"]
 	path = sources/linux
-	url = https://github.com/torvalds/linux.git
+	url = git@github.com:cometzero/linux.git
 [submodule "sources/buildroot"]
 	path = sources/buildroot
-	url = https://github.com/buildroot/buildroot.git
+	url = git@github.com:cometzero/buildroot.git
 [submodule "sources/zephyr"]
 	path = sources/zephyr
-	url = https://github.com/zephyrproject-rtos/zephyr.git
+	url = git@github.com:cometzero/zephyr.git
 [submodule "sources/zephyr-modules/libmetal"]
 	path = sources/zephyr-modules/libmetal
-	url = https://github.com/OpenAMP/libmetal.git
+	url = git@github.com:cometzero/libmetal.git
 [submodule "sources/zephyr-modules/open-amp"]
 	path = sources/zephyr-modules/open-amp
-	url = https://github.com/OpenAMP/open-amp.git
+	url = git@github.com:cometzero/open-amp.git
