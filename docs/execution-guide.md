@@ -146,6 +146,15 @@ find workloads/results -maxdepth 2 -name 'run_gem5_*.json' | sort | tail -n 6
 find build/logs -maxdepth 4 -name 'run_*.log' | sort | tail -n 6
 ```
 
+Quick access symlinks:
+
+```bash
+ls -l workloads/results/latest*
+ls -l build/logs/riscv64_smp/latest*
+ls -l build/logs/riscv32_mixed/latest*
+ls -l build/logs/riscv32_simple/latest*
+```
+
 Pass criteria:
 
 - run manifest has `"run_result": { "returncode": 0, ... }`

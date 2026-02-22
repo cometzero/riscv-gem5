@@ -100,6 +100,42 @@ def ensure_dirs(results_dir: Path, logs_dir: Path) -> None:
     logs_dir.mkdir(parents=True, exist_ok=True)
 
 
+def refresh_latest_symlink(parent: Path, link_name: str, target_name: str) -> None:
+    parent.mkdir(parents=True, exist_ok=True)
+    link_path = parent / link_name
+    if link_path.exists() or link_path.is_symlink():
+        if link_path.is_dir() and not link_path.is_symlink():
+            print(
+                f"[WARN] Skip symlink update for {link_path}: existing directory is not a symlink",
+                file=sys.stderr,
+            )
+            return
+        link_path.unlink()
+    link_path.symlink_to(target_name)
+
+
+def update_latest_symlinks(
+    results_root: Path,
+    log_root: Path,
+    target: str,
+    mode: str,
+    timestamp: str,
+) -> Dict[str, str]:
+    refresh_latest_symlink(results_root, "latest", timestamp)
+    refresh_latest_symlink(results_root, f"latest-{target}-{mode}", timestamp)
+
+    target_log_root = log_root / target
+    refresh_latest_symlink(target_log_root, "latest", timestamp)
+    refresh_latest_symlink(target_log_root, f"latest-{mode}", timestamp)
+
+    return {
+        "results_latest": str(results_root / "latest"),
+        "results_latest_mode": str(results_root / f"latest-{target}-{mode}"),
+        "logs_latest": str(target_log_root / "latest"),
+        "logs_latest_mode": str(target_log_root / f"latest-{mode}"),
+    }
+
+
 def max_ticks_for_mode(args: argparse.Namespace) -> int:
     return args.max_ticks_simple if args.mode == "simple" else args.max_ticks_complex
 
@@ -321,6 +357,13 @@ def main() -> int:
     results_dir = Path(args.results_root) / ts
     logs_dir = Path(args.log_root) / args.target / ts
     ensure_dirs(results_dir, logs_dir)
+    latest_links = update_latest_symlinks(
+        Path(args.results_root),
+        Path(args.log_root),
+        args.target,
+        args.mode,
+        ts,
+    )
 
     config_path = Path(args.config or default_riscv_config())
     manifest_path = results_dir / f"run_gem5_{args.target}_{args.mode}.json"
@@ -340,6 +383,7 @@ def main() -> int:
         "config": str(config_path),
         "results_dir": str(results_dir),
         "logs_dir": str(logs_dir),
+        "latest_links": latest_links,
     }
 
     if args.target == "riscv64_smp":

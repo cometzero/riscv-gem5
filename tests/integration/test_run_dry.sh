@@ -34,6 +34,22 @@ assert_dir() {
   echo "[OK] dir exists: ${d}"
 }
 
+assert_link_target() {
+  local link="$1"
+  local expected="$2"
+  if [[ ! -L "${link}" ]]; then
+    echo "[FAIL] missing symlink: ${link}"
+    exit 1
+  fi
+  local target
+  target="$(readlink "${link}")"
+  if [[ "${target}" != "${expected}" ]]; then
+    echo "[FAIL] symlink target mismatch: ${link} -> ${target} (expected ${expected})"
+    exit 1
+  fi
+  echo "[OK] symlink: ${link} -> ${target}"
+}
+
 assert_dir "workloads/results/${TS}"
 assert_dir "build/logs/riscv64_smp/${TS}"
 assert_dir "build/logs/riscv32_mixed/${TS}"
@@ -48,5 +64,16 @@ assert_file "workloads/results/${TS}/bench_riscv32_simple_simple.json"
 assert_file "workloads/results/${TS}/summary_riscv64_smp_simple.md"
 assert_file "workloads/results/${TS}/summary_riscv32_mixed_complex.md"
 assert_file "workloads/results/${TS}/summary_riscv32_simple_simple.md"
+
+assert_link_target "workloads/results/latest" "${TS}"
+assert_link_target "workloads/results/latest-riscv64_smp-simple" "${TS}"
+assert_link_target "workloads/results/latest-riscv32_mixed-complex" "${TS}"
+assert_link_target "workloads/results/latest-riscv32_simple-simple" "${TS}"
+assert_link_target "build/logs/riscv64_smp/latest" "${TS}"
+assert_link_target "build/logs/riscv64_smp/latest-simple" "${TS}"
+assert_link_target "build/logs/riscv32_mixed/latest" "${TS}"
+assert_link_target "build/logs/riscv32_mixed/latest-complex" "${TS}"
+assert_link_target "build/logs/riscv32_simple/latest" "${TS}"
+assert_link_target "build/logs/riscv32_simple/latest-simple" "${TS}"
 
 echo "[OK] integration dry-run test passed"
