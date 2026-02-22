@@ -135,6 +135,21 @@ scripts/run_bench.sh --target riscv32_mixed --mode complex --ipc-case mailbox_pi
 scripts/run_bench.sh --target riscv32_simple --mode simple
 ```
 
+## 5.5 Web dashboard (headless server)
+
+```bash
+cd /build/risc-v/riscv-gem5
+scripts/run_web_dashboard.sh
+```
+
+Browser access:
+
+- `http://<server-ip>:8080`
+
+Detailed usage:
+
+- `docs/web-dashboard.md`
+
 ## 6) Verification
 
 ## 6.1 Automated checks
