@@ -12,6 +12,7 @@ bash -n scripts/build_buildroot.sh
 bash -n scripts/build_linux_buildroot.sh
 bash -n scripts/build_zephyr.sh
 bash -n scripts/run_bench.sh
+bash -n scripts/run_web_dashboard.sh
 bash -n tests/smoke/test_layout.sh
 bash -n tests/smoke/test_scripts_syntax.sh
 bash -n tests/integration/test_run_dry.sh
@@ -20,6 +21,7 @@ echo "[INFO] python compile checks"
 python3 -m py_compile \
   conf/riscv64_smp.py \
   conf/riscv32_mixed.py \
-  scripts/run_gem5.py
+  scripts/run_gem5.py \
+  scripts/web_dashboard.py
 
 echo "[OK] syntax checks passed"

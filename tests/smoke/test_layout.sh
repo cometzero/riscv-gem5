@@ -18,6 +18,7 @@ required_files=(
   conf/zephyr/cluster1_smp.overlay
   conf/zephyr/riscv32_simple.overlay
   docs/ip-implementation-plan.md
+  docs/web-dashboard.md
   docs/acceptance.md
   workloads/ipc/mailbox_pingpong.md
   workloads/ipc/hwsem_contention.md
@@ -39,6 +40,11 @@ required_files=(
   scripts/riscv32_mixed_boot.ld
   scripts/run_gem5.py
   scripts/run_bench.sh
+  scripts/web_dashboard.py
+  scripts/run_web_dashboard.sh
+  dashboard/templates/index.html
+  dashboard/static/app.js
+  dashboard/static/styles.css
 )
 
 required_exec=(
@@ -50,6 +56,7 @@ required_exec=(
   scripts/build_riscv32_mixed_boot.sh
   scripts/build_zephyr.sh
   scripts/run_bench.sh
+  scripts/run_web_dashboard.sh
 )
 
 missing=0
