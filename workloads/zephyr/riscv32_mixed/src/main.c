@@ -11,6 +11,15 @@
 
 LOG_MODULE_REGISTER(riscv32_mixed, LOG_LEVEL_INF);
 
+#define MIXED_SYNC_BASE ((uintptr_t)0x90000000U)
+#define MIXED_SYNC_SLOT_AMP0 (MIXED_SYNC_BASE + 0x0U)
+#define MIXED_SYNC_SLOT_AMP1 (MIXED_SYNC_BASE + 0x4U)
+#define MIXED_SYNC_SLOT_SMP (MIXED_SYNC_BASE + 0x8U)
+#define MIXED_SYNC_SIG_AMP0 UINT32_C(0x41504330)
+#define MIXED_SYNC_SIG_AMP1 UINT32_C(0x41504331)
+#define MIXED_SYNC_SIG_SMP UINT32_C(0x534d5032)
+#define MIXED_SYNC_READY_MASK (BIT(0) | BIT(1) | BIT(2))
+
 struct workload_profile {
 	const char *dt_role;
 	const char *marker_role;
@@ -50,6 +59,74 @@ static const struct workload_profile *resolve_profile(const char *dt_role)
 	return NULL;
 }
 
+static volatile uint32_t *sync_slot(const char *dt_role)
+{
+	if (strcmp(dt_role, "cluster0-amp-cpu0") == 0) {
+		return (volatile uint32_t *)MIXED_SYNC_SLOT_AMP0;
+	}
+
+	if (strcmp(dt_role, "cluster0-amp-cpu1") == 0) {
+		return (volatile uint32_t *)MIXED_SYNC_SLOT_AMP1;
+	}
+
+	if (strcmp(dt_role, "cluster1-smp") == 0) {
+		return (volatile uint32_t *)MIXED_SYNC_SLOT_SMP;
+	}
+
+	return NULL;
+}
+
+static uint32_t sync_signature(const char *dt_role)
+{
+	if (strcmp(dt_role, "cluster0-amp-cpu0") == 0) {
+		return MIXED_SYNC_SIG_AMP0;
+	}
+
+	if (strcmp(dt_role, "cluster0-amp-cpu1") == 0) {
+		return MIXED_SYNC_SIG_AMP1;
+	}
+
+	if (strcmp(dt_role, "cluster1-smp") == 0) {
+		return MIXED_SYNC_SIG_SMP;
+	}
+
+	return 0U;
+}
+
+static void mark_role_ready(const char *dt_role)
+{
+	volatile uint32_t *slot = sync_slot(dt_role);
+	uint32_t signature = sync_signature(dt_role);
+
+	if (slot == NULL || signature == 0U) {
+		return;
+	}
+
+	__atomic_store_n(slot, signature, __ATOMIC_RELEASE);
+}
+
+static uint32_t role_ready_mask(void)
+{
+	uint32_t mask = 0U;
+
+	if (__atomic_load_n((volatile uint32_t *)MIXED_SYNC_SLOT_AMP0,
+			    __ATOMIC_ACQUIRE) == MIXED_SYNC_SIG_AMP0) {
+		mask |= BIT(0);
+	}
+
+	if (__atomic_load_n((volatile uint32_t *)MIXED_SYNC_SLOT_AMP1,
+			    __ATOMIC_ACQUIRE) == MIXED_SYNC_SIG_AMP1) {
+		mask |= BIT(1);
+	}
+
+	if (__atomic_load_n((volatile uint32_t *)MIXED_SYNC_SLOT_SMP,
+			    __ATOMIC_ACQUIRE) == MIXED_SYNC_SIG_SMP) {
+		mask |= BIT(2);
+	}
+
+	return mask;
+}
+
 int main(void)
 {
 	const char *dt_role = OMX_ROLE;
@@ -80,6 +157,24 @@ int main(void)
 
 	printk("RISCV32 MIXED %s WORKLOAD DONE total=%u\n", marker_role, total);
 	LOG_INF("mixed workload completed marker=%s total=%u", marker_role, total);
+	mark_role_ready(dt_role);
+
+	if (strcmp(dt_role, "cluster1-smp") == 0) {
+		uint32_t ready_mask = 0U;
+
+		for (uint32_t attempt = 0U; attempt < 300U; ++attempt) {
+			ready_mask = role_ready_mask();
+			if (ready_mask == MIXED_SYNC_READY_MASK) {
+				break;
+			}
+			k_sleep(K_MSEC(10));
+		}
+
+		printk("RISCV32 MIXED ROLE_SYNC mask=0x%x status=%s\n", ready_mask,
+		       ready_mask == MIXED_SYNC_READY_MASK ? "READY" : "TIMEOUT");
+		LOG_INF("mixed role sync mask=0x%x status=%s", ready_mask,
+			ready_mask == MIXED_SYNC_READY_MASK ? "READY" : "TIMEOUT");
+	}
 
 	for (uint32_t heartbeat = 0U;; ++heartbeat) {
 		if (IS_ENABLED(CONFIG_RISCV32_MIXED_VERBOSE) && (heartbeat % 5U) == 0U) {

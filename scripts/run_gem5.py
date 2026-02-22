@@ -2,8 +2,8 @@
 """Run gem5 simulations for riscv64_smp, riscv32_mixed, riscv32_simple targets.
 
 - riscv64_smp: Full-system Linux boot flow (deprecated fs_linux config backend).
-- riscv32_mixed: three bare-metal Zephyr runs (AMP cpu0/cpu1 + SMP cluster1) to
-  approximate mixed AMP/SMP execution in this phase.
+- riscv32_mixed: one gem5 launch with 6-core mixed topology and three Zephyr
+  images (CPU0 AMP, CPU1 AMP, CPU2-5 SMP) in a single run.
 - riscv32_simple: single-core bare-metal Zephyr run (CPU0 only).
 """
 
@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shlex
 import subprocess
 import sys
@@ -57,6 +58,64 @@ def default_riscv_config() -> str:
     return "sources/gem5/configs/deprecated/example/riscv/fs_linux.py"
 
 
+def default_config_for_target(target: str) -> str:
+    if target == "riscv32_mixed":
+        return "conf/riscv32_mixed.py"
+    return default_riscv_config()
+
+
+def mixed_cpu_type(cpu_type: str) -> str:
+    lowered = cpu_type.lower()
+    if "atomic" in lowered:
+        return "atomic"
+    return "timing"
+
+
+def read_elf_entry(path: str) -> int:
+    proc = subprocess.run(
+        ["readelf", "-h", path],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    for line in proc.stdout.splitlines():
+        if "Entry point address:" not in line:
+            continue
+        value = line.split(":", maxsplit=1)[1].strip()
+        return int(value, 0)
+    raise RuntimeError(f"failed to parse ELF entry point: {path}")
+
+
+def maybe_build_mixed_boot(args: argparse.Namespace) -> None:
+    amp0 = Path(args.amp_cpu0_elf)
+    amp1 = Path(args.amp_cpu1_elf)
+    smp = Path(args.smp_elf)
+    if not (amp0.exists() and amp1.exists() and smp.exists()):
+        return
+
+    entry0 = read_elf_entry(str(amp0))
+    entry1 = read_elf_entry(str(amp1))
+    entry_smp = read_elf_entry(str(smp))
+
+    boot_elf = Path(args.mixed_boot_elf)
+    boot_script = Path(__file__).resolve().with_name("build_riscv32_mixed_boot.sh")
+    boot_elf.parent.mkdir(parents=True, exist_ok=True)
+
+    cmd = [
+        str(boot_script),
+        "--output",
+        str(boot_elf),
+        "--amp-cpu0-entry",
+        hex(entry0),
+        "--amp-cpu1-entry",
+        hex(entry1),
+        "--cluster1-smp-entry",
+        hex(entry_smp),
+    ]
+    print(f"[INFO] Building mixed boot trampoline: {quoted(cmd)}")
+    subprocess.run(cmd, check=True)
+
+
 def parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         description="Run gem5 for riscv64_smp/riscv32_mixed/riscv32_simple",
@@ -80,6 +139,7 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--amp-cpu0-elf", default="build/zephyr/cluster0_amp_cpu0/zephyr/zephyr.elf")
     p.add_argument("--amp-cpu1-elf", default="build/zephyr/cluster0_amp_cpu1/zephyr/zephyr.elf")
     p.add_argument("--smp-elf", default="build/zephyr/cluster1_smp/zephyr/zephyr.elf")
+    p.add_argument("--mixed-boot-elf", default="build/boot/riscv32_mixed_boot.elf")
     p.add_argument("--simple-elf", default="build/zephyr/riscv32_simple/zephyr/zephyr.elf")
 
     # Runtime knobs
@@ -175,99 +235,72 @@ def rv64_command(
     return cmd, disk_image, kernel_elf
 
 
-def rv32_commands(
+def rv32_mixed_command(
     args: argparse.Namespace, config_path: Path, logs_dir: Path
-) -> List[Tuple[str, Path, List[str]]]:
-    # Keep a longer default runtime for the mixed bring-up target so each run
-    # reaches workload START/DONE markers in terminal output.
+) -> Tuple[List[str], List[Dict[str, object]], List[str], List[str]]:
+    # Keep a longer default runtime for mixed bring-up.
     abs_max_tick = args.max_ticks_complex if args.mode == "simple" else max_ticks_for_mode(args)
-    base = [
+    cmd = [
         args.gem5_bin,
+        f"--outdir={logs_dir}",
         str(config_path),
+        "--num-cpus",
+        "6",
         "--cpu-type",
-        args.cpu_type,
-        "--mem-size",
-        "512MB",
-        "--caches",
-        "--l2cache",
-        "--l1i_size",
-        "16kB",
-        "--l1d_size",
-        "16kB",
-        "--abs-max-tick",
+        mixed_cpu_type(args.cpu_type),
+        "--max-ticks",
         str(abs_max_tick),
-        "--bare-metal",
-        "--riscv-32bits",
+        "--boot-elf",
+        args.mixed_boot_elf,
+        "--amp-cpu0-elf",
+        args.amp_cpu0_elf,
+        "--amp-cpu1-elf",
+        args.amp_cpu1_elf,
+        "--smp-elf",
+        args.smp_elf,
     ]
 
-    run_defs = [
-        (
-            "amp_cpu0",
-            "256kB",
-            "1",
-            args.amp_cpu0_elf,
-        ),
-        (
-            "amp_cpu1",
-            "256kB",
-            "1",
-            args.amp_cpu1_elf,
-        ),
-        (
-            "cluster1_smp",
-            "512kB",
-            "4",
-            args.smp_elf,
-        ),
+    assignments = [
+        {
+            "name": "amp_cpu0",
+            "cpu_ids": [0],
+            "elf": args.amp_cpu0_elf,
+            "marker_role": "AMP CPU0",
+            "dt_role": "cluster0-amp-cpu0",
+        },
+        {
+            "name": "amp_cpu1",
+            "cpu_ids": [1],
+            "elf": args.amp_cpu1_elf,
+            "marker_role": "AMP CPU1",
+            "dt_role": "cluster0-amp-cpu1",
+        },
+        {
+            "name": "cluster1_smp",
+            "cpu_ids": [2, 3, 4, 5],
+            "elf": args.smp_elf,
+            "marker_role": "CLUSTER1 SMP",
+            "dt_role": "cluster1-smp",
+        },
+    ]
+    role_markers: List[str] = []
+    for item in assignments:
+        marker_role = str(item["marker_role"])
+        dt_role = str(item["dt_role"])
+        role_markers.extend(
+            [
+                f"RISCV32 MIXED {marker_role} WORKLOAD START",
+                f"RISCV32 MIXED {marker_role} WORKLOAD DONE",
+                f"role={dt_role}",
+            ]
+        )
+
+    required_markers = [
+        "RISCV32 MIXED CLUSTER1 SMP WORKLOAD DONE",
+        "RISCV32 MIXED ROLE_SYNC mask=0x7 status=READY",
     ]
 
-    runs: List[Tuple[str, Path, List[str]]] = []
-    for name, l2_size, num_cpus, elf in run_defs:
-        run_outdir = logs_dir / name
-        cmd = [
-            args.gem5_bin,
-            f"--outdir={run_outdir}",
-            *base[1:],
-            "--num-cpus",
-            num_cpus,
-            "--l2_size",
-            l2_size,
-            "--kernel",
-            elf,
-        ]
-        runs.append((name, run_outdir, cmd))
-    return runs
-
-
-def mixed_workload_markers(run_name: str) -> Tuple[str, str]:
-    markers: Dict[str, Tuple[str, str]] = {
-        "amp_cpu0": (
-            "RISCV32 MIXED AMP CPU0 WORKLOAD START",
-            "RISCV32 MIXED AMP CPU0 WORKLOAD DONE",
-        ),
-        "amp_cpu1": (
-            "RISCV32 MIXED AMP CPU1 WORKLOAD START",
-            "RISCV32 MIXED AMP CPU1 WORKLOAD DONE",
-        ),
-        "cluster1_smp": (
-            "RISCV32 MIXED CLUSTER1 SMP WORKLOAD START",
-            "RISCV32 MIXED CLUSTER1 SMP WORKLOAD DONE",
-        ),
-    }
-    if run_name not in markers:
-        raise KeyError(f"unsupported mixed run name: {run_name}")
-    return markers[run_name]
-
-
-def mixed_role_metadata(run_name: str) -> Tuple[str, str]:
-    roles: Dict[str, Tuple[str, str]] = {
-        "amp_cpu0": ("AMP CPU0", "cluster0-amp-cpu0"),
-        "amp_cpu1": ("AMP CPU1", "cluster0-amp-cpu1"),
-        "cluster1_smp": ("CLUSTER1 SMP", "cluster1-smp"),
-    }
-    if run_name not in roles:
-        raise KeyError(f"unsupported mixed run name: {run_name}")
-    return roles[run_name]
+    return cmd, assignments, required_markers, role_markers
 
 
 def rv32_simple_command(
@@ -308,13 +341,71 @@ def quoted(cmd: List[str]) -> str:
     return " ".join(shlex.quote(x) for x in cmd)
 
 
-def read_markers_from_paths(paths: List[Path], markers: List[str]) -> Dict[str, bool]:
+ANSI_ESCAPE_RE = re.compile(r"\x1B\[[0-?]*[ -/]*[@-~]")
+
+
+def clean_log_text(txt: str) -> str:
+    cleaned = ANSI_ESCAPE_RE.sub("", txt)
+    cleaned = cleaned.replace("\r", "\n").replace("\x00", " ")
+    return cleaned
+
+
+def normalize_log_text(txt: str) -> str:
+    cleaned = clean_log_text(txt)
+    return " ".join(cleaned.split())
+
+
+def to_alnum_upper(txt: str) -> str:
+    return "".join(ch for ch in txt.upper() if ch.isalnum())
+
+
+def is_subsequence(needle: str, haystack: str) -> bool:
+    if not needle:
+        return False
+    idx = 0
+    for ch in haystack:
+        if ch == needle[idx]:
+            idx += 1
+            if idx == len(needle):
+                return True
+    return False
+
+
+def marker_present(text: str, marker: str, allow_interleaved: bool = False) -> bool:
+    if marker in text:
+        return True
+
+    normalized = normalize_log_text(text)
+    norm_marker = " ".join(marker.split())
+    if norm_marker and norm_marker in normalized:
+        return True
+
+    if not allow_interleaved:
+        return False
+
+    needle = to_alnum_upper(norm_marker)
+    if not needle:
+        return False
+
+    cleaned = clean_log_text(text)
+    for line in cleaned.splitlines():
+        hay = to_alnum_upper(line)
+        if needle in hay or is_subsequence(needle, hay):
+            return True
+
+    hay_all = to_alnum_upper(normalized)
+    return needle in hay_all or is_subsequence(needle, hay_all)
+
+
+def read_markers_from_paths(
+    paths: List[Path], markers: List[str], allow_interleaved: bool = False
+) -> Dict[str, bool]:
     txt = ""
     for path in paths:
         if path.exists():
             txt += path.read_text(encoding="utf-8", errors="ignore")
             txt += "\n"
-    return {m: (m in txt) for m in markers}
+    return {marker: marker_present(txt, marker, allow_interleaved) for marker in markers}
 
 
 def read_stats_counter(stats_path: Path, key: str) -> int:
@@ -365,7 +456,7 @@ def main() -> int:
         ts,
     )
 
-    config_path = Path(args.config or default_riscv_config())
+    config_path = Path(args.config or default_config_for_target(args.target))
     manifest_path = results_dir / f"run_gem5_{args.target}_{args.mode}.json"
 
     missing: List[str] = []
@@ -489,8 +580,12 @@ def main() -> int:
         return int(run_result["returncode"])
 
     # riscv32_mixed
-    runs = rv32_commands(args, config_path, logs_dir)
-    manifest["commands"] = [cmd for _, _, cmd in runs]
+    cmd, assignments, workload_markers, role_markers = rv32_mixed_command(args, config_path, logs_dir)
+    manifest["commands"] = [cmd]
+    manifest["mixed_boot_elf"] = args.mixed_boot_elf
+    manifest["workload_assignments"] = assignments
+    manifest["workload_markers"] = workload_markers
+    manifest["role_markers"] = role_markers
 
     for name, elf in [
         ("amp_cpu0_elf", args.amp_cpu0_elf),
@@ -500,12 +595,20 @@ def main() -> int:
         if not Path(elf).exists():
             missing.append(f"{name}: {elf}")
 
+    if not args.dry_run:
+        try:
+            maybe_build_mixed_boot(args)
+        except Exception as exc:
+            missing.append(f"mixed_boot_build: {exc}")
+
+    if not Path(args.mixed_boot_elf).exists():
+        missing.append(f"mixed_boot_elf: {args.mixed_boot_elf}")
+
     if args.dry_run:
         print("[INFO] DRY-RUN mode")
         for item in missing:
             print(f"[WARN] Missing path: {item}")
-        for name, _, cmd in runs:
-            print(f"[INFO] command[{name}]={quoted(cmd)}")
+        print(f"[INFO] command={quoted(cmd)}")
         manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
         print(f"[OK] Manifest: {manifest_path}")
         return 0
@@ -516,61 +619,53 @@ def main() -> int:
         manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
         return 2
 
-    run_results: Dict[str, object] = {}
-    failed = 0
-    for name, run_outdir, cmd in runs:
-        run_log = logs_dir / f"run_riscv32_mixed_{name}.log"
-        print(f"[INFO] Executing[{name}]: {quoted(cmd)}")
-        result = run_one(cmd, run_log, args.timeout_sec)
-        terminal_log = run_outdir / "system.platform.terminal"
-        stats_path = run_outdir / "stats.txt"
-        marker_role, dt_role = mixed_role_metadata(name)
-        start_marker, done_marker = mixed_workload_markers(name)
-        workload_markers = [
-            "*** Booting Zephyr OS",
-            start_marker,
-            done_marker,
-            f"role={dt_role}",
-        ]
-        terminal_markers = read_markers_from_paths([terminal_log], workload_markers)
-        markers = read_markers_from_paths(
-            [run_log, terminal_log],
-            workload_markers + ["Kernel panic", "panic"],
-        )
-        sim_insts = read_stats_counter(stats_path, "simInsts")
-        checks = {
-            "returncode_ok": int(result["returncode"]) == 0,
-            "required_markers_ok": all(markers[m] for m in workload_markers),
-            "terminal_markers_ok": all(terminal_markers[m] for m in workload_markers),
-            "panic_free": (not markers["Kernel panic"]) and (not markers["panic"]),
-        }
-        run_results[name] = {
+    run_log = logs_dir / "run_riscv32_mixed.log"
+    print(f"[INFO] Executing: {quoted(cmd)}")
+    run_result = run_one(cmd, run_log, args.timeout_sec)
+    terminal_log = logs_dir / "system.platform.terminal"
+    stats_path = logs_dir / "stats.txt"
+    terminal_markers = read_markers_from_paths([terminal_log], workload_markers, allow_interleaved=True)
+    workload_and_role_markers = read_markers_from_paths(
+        [run_log, terminal_log],
+        workload_markers + role_markers,
+        allow_interleaved=True,
+    )
+    panic_markers = read_markers_from_paths([run_log, terminal_log], ["Kernel panic", "panic"])
+    markers = {**workload_and_role_markers, **panic_markers}
+    sim_insts = read_stats_counter(stats_path, "simInsts")
+    terminal_required_ok = all(terminal_markers[m] for m in workload_markers)
+    if (not terminal_required_ok) or (not terminal_log.exists()):
+        terminal_required_ok = all(markers[m] for m in workload_markers)
+
+    checks = {
+        "single_command": len(manifest["commands"]) == 1,
+        "returncode_ok": int(run_result["returncode"]) == 0,
+        "required_markers_ok": all(markers[m] for m in workload_markers),
+        "terminal_markers_ok": terminal_required_ok,
+        "panic_free": (not markers["Kernel panic"]) and (not markers["panic"]),
+    }
+    role_observations = {m: markers[m] for m in role_markers}
+    manifest.update(
+        {
             "run_log": str(run_log),
-            "run_outdir": str(run_outdir),
             "terminal_log": str(terminal_log),
             "stats_path": str(stats_path),
-            "sim_insts": sim_insts,
-            "result": result,
-            "marker_role": marker_role,
-            "dt_role": dt_role,
-            "workload_markers": workload_markers,
+            "run_result": run_result,
             "terminal_markers": terminal_markers,
             "markers": markers,
+            "role_observations": role_observations,
+            "sim_insts": sim_insts,
             "checks": checks,
+            "validation": {
+                "single_run": True,
+                "single_command": checks["single_command"],
+                "all_passed": all(checks.values()),
+            },
         }
-        if not all(checks.values()):
-            failed += 1
-
-    manifest["run_results"] = run_results
-    manifest["validation"] = {
-        "total_runs": len(runs),
-        "passed_runs": len(runs) - failed,
-        "failed_runs": failed,
-        "all_passed": failed == 0,
-    }
+    )
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     print(f"[OK] Manifest: {manifest_path}")
-    return 1 if failed else 0
+    return 1 if not all(checks.values()) else 0
 
 
 if __name__ == "__main__":

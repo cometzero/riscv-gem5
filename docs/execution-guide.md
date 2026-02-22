@@ -85,8 +85,12 @@ scripts/build_zephyr.sh --target riscv32_simple --jobs "$(nproc)"
 Note:
 - mixed targets (`cluster0_amp_cpu0|cluster0_amp_cpu1|cluster1_smp`) build
   `workloads/zephyr/riscv32_mixed` by default.
+- mixed targets apply per-target `EXTRA_CONF_FILE`
+  (`conf/zephyr/<target>.conf`) for boot-hart/SMP role separation.
 - optional per-phase verbose logs are controlled by
   `CONFIG_RISCV32_MIXED_VERBOSE` in `workloads/zephyr/riscv32_mixed/prj.conf`.
+- one-gem5 mixed boot trampoline is auto-built by `run_gem5.py` and can be
+  built manually via `scripts/build_riscv32_mixed_boot.sh`.
 
 Key outputs:
 
@@ -104,7 +108,7 @@ cd /build/risc-v/riscv-gem5
 python3 scripts/run_gem5.py --target riscv64_smp --mode simple
 ```
 
-## 5.2 RV32 mixed (AMP/SMP split path)
+## 5.2 RV32 mixed (single gem5, mixed AMP/SMP path)
 
 ```bash
 cd /build/risc-v/riscv-gem5
@@ -158,10 +162,12 @@ ls -l build/logs/riscv32_simple/latest*
 Pass criteria:
 
 - run manifest has `"run_result": { "returncode": 0, ... }`
-- `riscv32_mixed` run manifest has `run_results.<amp_cpu0|amp_cpu1|cluster1_smp>.result.returncode = 0`
-- `riscv32_mixed` run manifest has `run_results.*.checks` with all fields `true`
+- `riscv32_mixed` run manifest has exactly one command (`commands` length = 1)
+- `riscv32_mixed` run manifest has `checks` with all fields `true`
   (`returncode_ok`, `required_markers_ok`, `terminal_markers_ok`, `panic_free`)
-- run log contains `**** REAL SIMULATION ****`
+- `riscv32_mixed` run log contains one-simulator sync marker:
+  `RISCV32 MIXED ROLE_SYNC mask=0x7 status=READY`
+- `riscv32_mixed` manifest `commands` length is `1` (single gem5 process)
 - benchmark manifest exists for all enabled targets
 
 ## 7) Known Caveat

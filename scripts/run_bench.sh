@@ -96,7 +96,24 @@ import json, sys
 p = json.load(open(sys.argv[1], encoding='utf-8'))
 rr = p.get("run_result")
 if isinstance(rr, dict) and "returncode" in rr:
-    print(rr.get("returncode", ""))
+    rc = rr.get("returncode")
+    try:
+        rc_ok = int(rc) == 0
+    except (TypeError, ValueError):
+        rc_ok = False
+    checks = p.get("checks", {})
+    markers_ok = checks.get("required_markers_ok", True)
+    terminal_ok = checks.get("terminal_markers_ok", True)
+    panic_free = checks.get("panic_free", True)
+    if checks and not (rc_ok and markers_ok and terminal_ok and panic_free):
+        print(
+            f"[WARN] single mixed run failed validation: "
+            f"rc_ok={rc_ok} markers_ok={markers_ok} terminal_ok={terminal_ok} panic_free={panic_free}",
+            file=sys.stderr,
+        )
+        print(1)
+    else:
+        print(rr.get("returncode", ""))
     raise SystemExit(0)
 
 run_results = p.get("run_results")
