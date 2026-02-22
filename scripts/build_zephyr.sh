@@ -71,6 +71,9 @@ if [[ "${APP_EXPLICIT}" -eq 0 ]]; then
     riscv32_simple)
       APP_DIR="${REPO_ROOT}/workloads/zephyr/riscv32_simple"
       ;;
+    cluster0_amp_cpu0|cluster0_amp_cpu1|cluster1_smp)
+      APP_DIR="${REPO_ROOT}/workloads/zephyr/riscv32_mixed"
+      ;;
     *)
       APP_DIR="${REPO_ROOT}/sources/zephyr/samples/hello_world"
       ;;
@@ -105,6 +108,17 @@ fi
 if [[ ! -f "${OVERLAY}" ]]; then
   echo "[ERROR] Overlay not found: ${OVERLAY}" >&2
   exit 1
+fi
+
+if [[ -f "${BUILD_DIR}/CMakeCache.txt" ]]; then
+  cached_home="$(grep -E '^CMAKE_HOME_DIRECTORY:INTERNAL=' "${BUILD_DIR}/CMakeCache.txt" | cut -d= -f2- || true)"
+  if [[ -n "${cached_home}" && "${cached_home}" != "${APP_DIR}" ]]; then
+    echo "[WARN] Existing build dir is bound to another app:"
+    echo "[WARN]   cached=${cached_home}"
+    echo "[WARN]   current=${APP_DIR}"
+    echo "[WARN] Cleaning ${BUILD_DIR} for reconfigure."
+    rm -rf "${BUILD_DIR}"
+  fi
 fi
 
 echo "[INFO] Zephyr no-west build target=${TARGET}"

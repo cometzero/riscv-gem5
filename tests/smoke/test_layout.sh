@@ -18,6 +18,10 @@ required_files=(
   docs/acceptance.md
   workloads/ipc/mailbox_pingpong.md
   workloads/ipc/hwsem_contention.md
+  workloads/zephyr/riscv32_mixed/CMakeLists.txt
+  workloads/zephyr/riscv32_mixed/Kconfig
+  workloads/zephyr/riscv32_mixed/prj.conf
+  workloads/zephyr/riscv32_mixed/src/main.c
   workloads/zephyr/riscv32_simple/CMakeLists.txt
   workloads/zephyr/riscv32_simple/prj.conf
   workloads/zephyr/riscv32_simple/src/main.c

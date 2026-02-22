@@ -1,0 +1,12 @@
+source "Kconfig.zephyr"
+
+menu "riscv32_mixed workload options"
+
+config RISCV32_MIXED_VERBOSE
+	bool "Enable verbose mixed workload progress logs"
+	default n
+	help
+	  When enabled, print per-phase details for the mixed AMP/SMP
+	  validation workload.
+
+endmenu

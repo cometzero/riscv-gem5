@@ -82,6 +82,12 @@ scripts/build_zephyr.sh --target cluster1_smp   --jobs "$(nproc)"
 scripts/build_zephyr.sh --target riscv32_simple --jobs "$(nproc)"
 ```
 
+Note:
+- mixed targets (`cluster0_amp_cpu0|cluster0_amp_cpu1|cluster1_smp`) build
+  `workloads/zephyr/riscv32_mixed` by default.
+- optional per-phase verbose logs are controlled by
+  `CONFIG_RISCV32_MIXED_VERBOSE` in `workloads/zephyr/riscv32_mixed/prj.conf`.
+
 Key outputs:
 
 - `build/zephyr/cluster0_amp_cpu0/zephyr/zephyr.elf`
