@@ -6,8 +6,6 @@ Modes:
 - gem5 runtime: instantiate and run a real RISC-V full-system simulation.
 """
 
-from __future__ import annotations
-
 import argparse
 import json
 import os
@@ -61,7 +59,11 @@ class PlatformPlan:
 
 
 def default_cmdline() -> str:
-    return "console=ttyS0 earlycon=sbi root=/dev/ram rw init=/sbin/init"
+    return (
+        "console=ttyS0,115200 earlycon=sbi "
+        "root=/dev/ram0 rw rdinit=/init "
+        "loglevel=8 ignore_loglevel"
+    )
 
 
 def build_plan(args: argparse.Namespace) -> PlatformPlan:
@@ -106,13 +108,16 @@ def parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--kernel", default="build/linux/arch/riscv/boot/Image")
     p.add_argument("--kernel-elf", default="build/linux/vmlinux")
-    p.add_argument("--bootloader", default="build/buildroot/images/fw_jump.elf")
-    p.add_argument("--initramfs", default="build/buildroot/images/rootfs.cpio")
+    p.add_argument("--bootloader", default="sources/buildroot/output/images/fw_jump.elf")
+    p.add_argument("--bootloader-addr", default="0x80000000")
+    p.add_argument("--initramfs", default="build/initramfs/rootfs-shell.cpio")
     p.add_argument("--dtb", default="build/linux/arch/riscv/boot/dts/gem5-riscv64-smp.dtb")
     p.add_argument("--disk-image", default="build/buildroot/images/rootfs.ext2")
     p.add_argument("--cmdline", default=default_cmdline())
     p.add_argument("--num-cpus", type=int, default=4)
     p.add_argument("--cpu-type", choices=["atomic", "timing"], default="atomic")
+    p.add_argument("--sys-clock", default="1GHz")
+    p.add_argument("--cpu-clock", default="3GHz")
     p.add_argument("--mem-size", default="2GiB")
     p.add_argument("--kernel-addr", default="0x80200000")
     p.add_argument("--dtb-addr", default="0x87E00000")
@@ -217,7 +222,6 @@ def _run_gem5_runtime(args: argparse.Namespace) -> int:
         Frequency,
         HiFive,
         IOXBar,
-        MemBus,
         MemCtrl,
         PMAChecker,
         RawDiskImage,
@@ -227,6 +231,7 @@ def _run_gem5_runtime(args: argparse.Namespace) -> int:
         RiscvRTC,
         RiscvSystem,
         Root,
+        SystemXBar,
         SrcClockDomain,
         TimingSimpleCPU,
         VirtIOBlock,
@@ -256,12 +261,14 @@ def _run_gem5_runtime(args: argparse.Namespace) -> int:
     system.cache_line_size = 64
 
     system.voltage_domain = VoltageDomain(voltage="1.0V")
-    system.clk_domain = SrcClockDomain(clock="1GHz", voltage_domain=system.voltage_domain)
+    system.clk_domain = SrcClockDomain(clock=args.sys_clock, voltage_domain=system.voltage_domain)
     system.cpu_voltage_domain = VoltageDomain()
-    system.cpu_clk_domain = SrcClockDomain(clock="1GHz", voltage_domain=system.cpu_voltage_domain)
+    system.cpu_clk_domain = SrcClockDomain(
+        clock=args.cpu_clock, voltage_domain=system.cpu_voltage_domain
+    )
 
     system.iobus = IOXBar()
-    system.membus = MemBus()
+    system.membus = SystemXBar()
     system.system_port = system.membus.cpu_side_ports
 
     system.platform = HiFive()
@@ -321,7 +328,11 @@ def _run_gem5_runtime(args: argparse.Namespace) -> int:
         workload = RiscvBootloaderKernelWorkload()
         workload.object_file = str(kernel_path)
         workload.kernel_addr = int(args.kernel_addr, 0)
-        workload.entry_point = workload.kernel_addr
+        if has_bootloader:
+            workload.bootloader_addr = int(args.bootloader_addr, 0)
+            workload.entry_point = workload.bootloader_addr
+        else:
+            workload.entry_point = workload.kernel_addr
         workload.command_line = args.cmdline
         workload.dtb_addr = int(args.dtb_addr, 0)
         if has_bootloader:
@@ -387,5 +398,5 @@ def main() -> int:
     return _run_gem5_runtime(args)
 
 
-if __name__ == "__main__":
+if __name__ in {"__main__", "__m5_main__"}:
     raise SystemExit(main())
