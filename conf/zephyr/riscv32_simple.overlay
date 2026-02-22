@@ -1,0 +1,9 @@
+/* RV32 simple single-core overlay */
+/ {
+  zephyr,user {
+    omx-role = "riscv32-simple-cpu0";
+    omx-uart-policy = "shared";
+    omx-mailbox = "disabled";
+    omx-hwsem = "disabled";
+  };
+};
