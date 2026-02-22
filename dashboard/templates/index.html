@@ -140,20 +140,22 @@
         <pre id="log-lines" class="mono scrollbox">No logs loaded.</pre>
       </section>
 
-      <section class="card">
-        <h2>Config Artifacts</h2>
-        <div class="button-row">
-          <button id="load-svg" type="button">Load SVG</button>
-          <button id="load-dot" type="button">Load DOT</button>
-        </div>
-        <div class="grid-2">
-          <div>
-            <h3>config.dot.svg</h3>
-            <object id="config-svg" type="image/svg+xml" data="" class="svg-view"></object>
+      <section class="card config-card">
+        <h2>Config Artifact (SVG)</h2>
+        <div class="config-toolbar">
+          <span id="config-status" class="muted">
+            Simulation 완료 후 config.dot.svg가 자동으로 로드됩니다.
+          </span>
+          <div class="button-row">
+            <button id="zoom-out" type="button">Zoom -</button>
+            <button id="zoom-reset" type="button">100%</button>
+            <button id="zoom-in" type="button">Zoom +</button>
+            <span id="zoom-value" class="status-pill">100%</span>
           </div>
-          <div>
-            <h3>config.dot</h3>
-            <textarea id="config-dot" class="mono scrollbox" readonly></textarea>
+        </div>
+        <div id="config-svg-viewport" class="config-svg-viewport">
+          <div id="config-svg-canvas" class="config-svg-canvas">
+            <div class="config-svg-placeholder">No SVG loaded yet.</div>
           </div>
         </div>
       </section>

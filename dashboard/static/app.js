@@ -2,6 +2,8 @@ const state = {
   options: null,
   currentJobId: null,
   pollTimer: null,
+  configZoom: 1,
+  configSvgLoadedForJobId: "",
 };
 
 const el = {
@@ -31,10 +33,13 @@ const el = {
   logQuery: document.getElementById("log-query"),
   logRefresh: document.getElementById("log-refresh"),
   logLines: document.getElementById("log-lines"),
-  loadSvg: document.getElementById("load-svg"),
-  loadDot: document.getElementById("load-dot"),
-  configSvg: document.getElementById("config-svg"),
-  configDot: document.getElementById("config-dot"),
+  zoomOut: document.getElementById("zoom-out"),
+  zoomReset: document.getElementById("zoom-reset"),
+  zoomIn: document.getElementById("zoom-in"),
+  zoomValue: document.getElementById("zoom-value"),
+  configStatus: document.getElementById("config-status"),
+  configSvgViewport: document.getElementById("config-svg-viewport"),
+  configSvgCanvas: document.getElementById("config-svg-canvas"),
   metricsChart: document.getElementById("metrics-chart"),
   checksChart: document.getElementById("checks-chart"),
 };
@@ -418,29 +423,51 @@ async function refreshLogs() {
   }
 }
 
-function loadSvgArtifact() {
-  if (!state.currentJobId) {
-    el.configDot.textContent = "Select a job first.";
-    return;
-  }
-  el.configSvg.data = `/api/simulations/${state.currentJobId}/config/svg?ts=${Date.now()}`;
+function setConfigStatus(message) {
+  el.configStatus.textContent = message;
 }
 
-async function loadDotArtifact() {
-  if (!state.currentJobId) {
-    el.configDot.textContent = "Select a job first.";
+function setConfigZoom(nextZoom) {
+  const clamped = Math.min(4.0, Math.max(0.25, nextZoom));
+  state.configZoom = clamped;
+  el.configSvgCanvas.style.transform = `scale(${clamped})`;
+  el.zoomValue.textContent = `${Math.round(clamped * 100)}%`;
+}
+
+function resetConfigSvg(message) {
+  el.configSvgCanvas.innerHTML = `<div class="config-svg-placeholder">${message}</div>`;
+  el.configSvgCanvas.style.transform = "scale(1)";
+  state.configZoom = 1;
+  el.zoomValue.textContent = "100%";
+}
+
+async function loadSvgArtifact(jobId, { auto = false, force = false } = {}) {
+  if (!jobId) {
+    resetConfigSvg("Select a job first.");
+    return;
+  }
+  if (!force && state.configSvgLoadedForJobId === jobId) {
     return;
   }
 
+  const modeText = auto ? "auto-loading" : "loading";
+  setConfigStatus(`config.dot.svg ${modeText}...`);
   try {
-    const res = await fetch(`/api/simulations/${state.currentJobId}/config/dot?ts=${Date.now()}`);
+    const res = await fetch(`/api/simulations/${jobId}/config/svg?ts=${Date.now()}`);
     if (!res.ok) {
-      el.configDot.textContent = `config.dot unavailable (${res.status})`;
+      resetConfigSvg(`config.dot.svg unavailable (${res.status})`);
+      setConfigStatus("config.dot.svg not ready yet.");
       return;
     }
-    el.configDot.textContent = await res.text();
+
+    const svgText = await res.text();
+    el.configSvgCanvas.innerHTML = svgText;
+    setConfigZoom(state.configZoom);
+    state.configSvgLoadedForJobId = jobId;
+    setConfigStatus("config.dot.svg loaded.");
   } catch (error) {
-    el.configDot.textContent = `Failed to load config.dot: ${error}`;
+    resetConfigSvg(`Failed to load SVG: ${error}`);
+    setConfigStatus("Failed to load config.dot.svg.");
   }
 }
 
@@ -453,6 +480,16 @@ async function refreshCurrentJob() {
     const payload = await fetchJson(`/api/simulations/${state.currentJobId}`);
     renderJobPayload(payload);
     setLogSources(payload.summary?.log_sources || []);
+
+    if (payload.status === "running" || payload.status === "queued") {
+      state.configSvgLoadedForJobId = "";
+      setConfigStatus("Simulation running... SVG will be auto-loaded on completion.");
+    } else if (payload.status === "completed") {
+      await loadSvgArtifact(payload.job_id, { auto: true });
+    } else if (payload.status === "failed") {
+      setConfigStatus("Simulation failed. SVG artifact may not be available.");
+    }
+
     await refreshLogs();
   } catch (error) {
     setBadgeStatus(el.activeStatus, "error", "err");
@@ -485,6 +522,9 @@ async function createSimulation(event) {
 
     state.currentJobId = created.job_id;
     el.runButton.disabled = true;
+    state.configSvgLoadedForJobId = "";
+    resetConfigSvg("Simulation started. Waiting for completion...");
+    setConfigStatus("Simulation started. SVG will auto-load after completion.");
 
     await refreshJobs();
     await refreshCurrentJob();
@@ -519,6 +559,9 @@ async function bootstrap() {
 
   state.options = await fetchJson("/api/options");
   populateTargets();
+  resetConfigSvg("No SVG loaded yet.");
+  setConfigStatus("Simulation 완료 후 config.dot.svg가 자동으로 로드됩니다.");
+  setConfigZoom(1);
 
   await refreshJobs();
   await refreshCurrentJob();
@@ -536,8 +579,15 @@ el.logRefresh.addEventListener("click", refreshLogs);
 el.logSource.addEventListener("change", refreshLogs);
 el.logLevel.addEventListener("change", refreshLogs);
 el.logQuery.addEventListener("change", refreshLogs);
-el.loadSvg.addEventListener("click", loadSvgArtifact);
-el.loadDot.addEventListener("click", loadDotArtifact);
+el.zoomIn.addEventListener("click", () => {
+  setConfigZoom(state.configZoom * 1.2);
+});
+el.zoomOut.addEventListener("click", () => {
+  setConfigZoom(state.configZoom / 1.2);
+});
+el.zoomReset.addEventListener("click", () => {
+  setConfigZoom(1);
+});
 
 bootstrap().catch((error) => {
   setBadgeStatus(el.activeStatus, "init error", "err");

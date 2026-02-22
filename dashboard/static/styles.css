@@ -148,20 +148,6 @@ textarea {
   background: #0b1220;
 }
 
-#config-dot {
-  width: 100%;
-  min-height: 300px;
-  resize: vertical;
-}
-
-.svg-view {
-  width: 100%;
-  min-height: 300px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: white;
-}
-
 .kv-wrap {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -241,7 +227,7 @@ tr.selected {
 .button-row {
   display: flex;
   gap: 8px;
-  margin-bottom: 8px;
+  align-items: center;
 }
 
 .log-error {
@@ -274,6 +260,48 @@ tr.selected {
 
 .status-queued {
   color: var(--accent);
+}
+
+.config-card {
+  grid-column: 1 / -1;
+}
+
+.config-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.config-svg-viewport {
+  width: 100%;
+  min-height: 680px;
+  height: 74vh;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 10px;
+}
+
+.config-svg-canvas {
+  transform-origin: top left;
+  width: max-content;
+  min-width: 100%;
+  min-height: 100%;
+}
+
+.config-svg-canvas svg {
+  display: block;
+  max-width: none;
+  height: auto;
+}
+
+.config-svg-placeholder {
+  color: #334155;
+  font-size: 0.92rem;
 }
 
 canvas {

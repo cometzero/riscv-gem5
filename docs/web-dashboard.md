@@ -59,8 +59,9 @@ Then access from browser:
    - metric/check charts (canvas)
 4. log filter
    - source/level/query filter
-5. gem5 config svg/dot view
-   - `Config Artifacts` card (`config.dot.svg`, `config.dot`)
+5. gem5 config SVG view (auto-load + zoom)
+   - simulation completion 시 `config.dot.svg` 자동 로드
+   - Zoom +/- / 100% reset
 
 ## 6) API contract (for automation)
 
