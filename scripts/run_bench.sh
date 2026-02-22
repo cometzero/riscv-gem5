@@ -94,8 +94,35 @@ if [[ -f "${RUN_MANIFEST}" ]]; then
   RUN_RETURNCODE="$(python3 - "${RUN_MANIFEST}" <<'PY'
 import json, sys
 p = json.load(open(sys.argv[1], encoding='utf-8'))
-rr = p.get("run_result", {})
-print(rr.get("returncode", ""))
+rr = p.get("run_result")
+if isinstance(rr, dict) and "returncode" in rr:
+    print(rr.get("returncode", ""))
+    raise SystemExit(0)
+
+run_results = p.get("run_results")
+if isinstance(run_results, dict) and run_results:
+    failed = 0
+    for run_name, run_info in run_results.items():
+        result = run_info.get("result", {})
+        checks = run_info.get("checks", {})
+        rc = result.get("returncode")
+        try:
+            rc_ok = int(rc) == 0
+        except (TypeError, ValueError):
+            rc_ok = False
+        markers_ok = checks.get("required_markers_ok", True)
+        terminal_ok = checks.get("terminal_markers_ok", True)
+        panic_free = checks.get("panic_free", True)
+        if not (rc_ok and markers_ok and terminal_ok and panic_free):
+            failed += 1
+            print(
+                f"[WARN] mixed run {run_name} failed validation: "
+                f"rc_ok={rc_ok} markers_ok={markers_ok} terminal_ok={terminal_ok} panic_free={panic_free}",
+                file=sys.stderr,
+            )
+    print(1 if failed else 0)
+else:
+    print("")
 PY
 )"
 fi

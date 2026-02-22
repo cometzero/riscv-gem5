@@ -149,6 +149,9 @@ find build/logs -maxdepth 4 -name 'run_*.log' | sort | tail -n 6
 Pass criteria:
 
 - run manifest has `"run_result": { "returncode": 0, ... }`
+- `riscv32_mixed` run manifest has `run_results.<amp_cpu0|amp_cpu1|cluster1_smp>.result.returncode = 0`
+- `riscv32_mixed` run manifest has `run_results.*.checks` with all fields `true`
+  (`returncode_ok`, `required_markers_ok`, `terminal_markers_ok`, `panic_free`)
 - run log contains `**** REAL SIMULATION ****`
 - benchmark manifest exists for all enabled targets
 

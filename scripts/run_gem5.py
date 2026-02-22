@@ -139,7 +139,12 @@ def rv64_command(
     return cmd, disk_image, kernel_elf
 
 
-def rv32_commands(args: argparse.Namespace, config_path: Path, logs_dir: Path) -> List[Tuple[str, Path, List[str]]]:
+def rv32_commands(
+    args: argparse.Namespace, config_path: Path, logs_dir: Path
+) -> List[Tuple[str, Path, List[str]]]:
+    # Keep a longer default runtime for the mixed bring-up target so each run
+    # reaches workload START/DONE markers in terminal output.
+    abs_max_tick = args.max_ticks_complex if args.mode == "simple" else max_ticks_for_mode(args)
     base = [
         args.gem5_bin,
         str(config_path),
@@ -154,7 +159,7 @@ def rv32_commands(args: argparse.Namespace, config_path: Path, logs_dir: Path) -
         "--l1d_size",
         "16kB",
         "--abs-max-tick",
-        str(max_ticks_for_mode(args)),
+        str(abs_max_tick),
         "--bare-metal",
         "--riscv-32bits",
     ]
@@ -196,6 +201,37 @@ def rv32_commands(args: argparse.Namespace, config_path: Path, logs_dir: Path) -
         ]
         runs.append((name, run_outdir, cmd))
     return runs
+
+
+def mixed_workload_markers(run_name: str) -> Tuple[str, str]:
+    markers: Dict[str, Tuple[str, str]] = {
+        "amp_cpu0": (
+            "RISCV32 MIXED AMP CPU0 WORKLOAD START",
+            "RISCV32 MIXED AMP CPU0 WORKLOAD DONE",
+        ),
+        "amp_cpu1": (
+            "RISCV32 MIXED AMP CPU1 WORKLOAD START",
+            "RISCV32 MIXED AMP CPU1 WORKLOAD DONE",
+        ),
+        "cluster1_smp": (
+            "RISCV32 MIXED CLUSTER1 SMP WORKLOAD START",
+            "RISCV32 MIXED CLUSTER1 SMP WORKLOAD DONE",
+        ),
+    }
+    if run_name not in markers:
+        raise KeyError(f"unsupported mixed run name: {run_name}")
+    return markers[run_name]
+
+
+def mixed_role_metadata(run_name: str) -> Tuple[str, str]:
+    roles: Dict[str, Tuple[str, str]] = {
+        "amp_cpu0": ("AMP CPU0", "cluster0-amp-cpu0"),
+        "amp_cpu1": ("AMP CPU1", "cluster0-amp-cpu1"),
+        "cluster1_smp": ("CLUSTER1 SMP", "cluster1-smp"),
+    }
+    if run_name not in roles:
+        raise KeyError(f"unsupported mixed run name: {run_name}")
+    return roles[run_name]
 
 
 def rv32_simple_command(
@@ -444,16 +480,26 @@ def main() -> int:
         result = run_one(cmd, run_log, args.timeout_sec)
         terminal_log = run_outdir / "system.platform.terminal"
         stats_path = run_outdir / "stats.txt"
+        marker_role, dt_role = mixed_role_metadata(name)
+        start_marker, done_marker = mixed_workload_markers(name)
+        workload_markers = [
+            "*** Booting Zephyr OS",
+            start_marker,
+            done_marker,
+            f"role={dt_role}",
+        ]
+        terminal_markers = read_markers_from_paths([terminal_log], workload_markers)
         markers = read_markers_from_paths(
             [run_log, terminal_log],
-            [
-                "*** Booting Zephyr OS",
-                "Hello World!",
-                "Kernel panic",
-                "panic",
-            ],
+            workload_markers + ["Kernel panic", "panic"],
         )
         sim_insts = read_stats_counter(stats_path, "simInsts")
+        checks = {
+            "returncode_ok": int(result["returncode"]) == 0,
+            "required_markers_ok": all(markers[m] for m in workload_markers),
+            "terminal_markers_ok": all(terminal_markers[m] for m in workload_markers),
+            "panic_free": (not markers["Kernel panic"]) and (not markers["panic"]),
+        }
         run_results[name] = {
             "run_log": str(run_log),
             "run_outdir": str(run_outdir),
@@ -461,12 +507,23 @@ def main() -> int:
             "stats_path": str(stats_path),
             "sim_insts": sim_insts,
             "result": result,
+            "marker_role": marker_role,
+            "dt_role": dt_role,
+            "workload_markers": workload_markers,
+            "terminal_markers": terminal_markers,
             "markers": markers,
+            "checks": checks,
         }
-        if int(result["returncode"]) != 0:
+        if not all(checks.values()):
             failed += 1
 
     manifest["run_results"] = run_results
+    manifest["validation"] = {
+        "total_runs": len(runs),
+        "passed_runs": len(runs) - failed,
+        "failed_runs": failed,
+        "all_passed": failed == 0,
+    }
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     print(f"[OK] Manifest: {manifest_path}")
     return 1 if failed else 0
