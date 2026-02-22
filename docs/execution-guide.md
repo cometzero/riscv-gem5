@@ -182,6 +182,8 @@ ls -l build/logs/riscv32_simple/latest*
 Pass criteria:
 
 - run manifest has `"run_result": { "returncode": 0, ... }`
+- `riscv64_smp` run manifest `checks.uart_log_present == true`
+- `riscv64_smp` terminal log contains `OpenSBI` banner text
 - `riscv32_mixed` run manifest has exactly one command (`commands` length = 1)
 - `riscv32_mixed` run manifest has `checks` with all fields `true`
   (`returncode_ok`, `required_markers_ok`, `terminal_markers_ok`, `panic_free`)
@@ -200,6 +202,8 @@ Pass criteria:
 - `riscv64_smp` 는 `fs_linux.py` 경로에서 OpenSBI bootloader(`fw_jump.elf`)를 함께 지정해야
   kernel mapping fatal을 피할 수 있다.
 - `scripts/run_gem5.py`는 `fw_jump.elf`를 자동 탐색하여 `--bootloader`를 주입한다.
+- `riscv64_smp --mode simple`은 UART boot log 수집을 위해 기본 tick budget이
+  `20,000,000,000`으로 설정되어 있다.
 
 ## 8) Definition of Done (DoD)
 

@@ -156,7 +156,9 @@ def parser() -> argparse.ArgumentParser:
 
     # Runtime knobs
     p.add_argument("--cpu-type", default="TimingSimpleCPU")
-    p.add_argument("--max-ticks-simple", type=int, default=200_000_000)
+    # rv64 simple mode needs a larger tick budget to expose UART boot banners
+    # (OpenSBI/Linux early boot) in terminal logs.
+    p.add_argument("--max-ticks-simple", type=int, default=20_000_000_000)
     p.add_argument("--max-ticks-complex", type=int, default=2_000_000_000)
     p.add_argument("--timeout-sec", type=int, default=1800)
 
@@ -553,8 +555,9 @@ def main() -> int:
             "returncode_ok": int(run_result["returncode"]) == 0,
             "required_markers_ok": markers["Loaded bootloader"] and markers["Loaded kernel"],
             "terminal_markers_ok": (
-                markers["OpenSBI"] or markers["Linux version"] or markers["simulate() limit reached"]
+                markers["OpenSBI"] or markers["Linux version"]
             ),
+            "uart_log_present": terminal_log.exists() and terminal_log.stat().st_size > 0,
             "panic_free": (not markers["Kernel panic"]) and (not markers["fatal:"]),
         }
         manifest.update({
