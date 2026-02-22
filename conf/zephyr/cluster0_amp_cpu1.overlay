@@ -7,3 +7,15 @@
     omx-hwsem = "placeholder";
   };
 };
+
+&ram0 {
+  reg = <0x84000000 0x02000000>;
+};
+
+&{/cpus/cpu@0} { status = "disabled"; };
+&{/cpus/cpu@2} { status = "disabled"; };
+&{/cpus/cpu@3} { status = "disabled"; };
+&{/cpus/cpu@4} { status = "disabled"; };
+&{/cpus/cpu@5} { status = "disabled"; };
+&{/cpus/cpu@6} { status = "disabled"; };
+&{/cpus/cpu@7} { status = "disabled"; };

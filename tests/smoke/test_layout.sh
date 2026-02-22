@@ -10,8 +10,11 @@ required_files=(
   conf/riscv32_simple.py
   conf/submodules.lock.json
   conf/ip/mailbox_hwsem_map.yaml
+  conf/zephyr/cluster0_amp_cpu0.conf
   conf/zephyr/cluster0_amp_cpu0.overlay
+  conf/zephyr/cluster0_amp_cpu1.conf
   conf/zephyr/cluster0_amp_cpu1.overlay
+  conf/zephyr/cluster1_smp.conf
   conf/zephyr/cluster1_smp.overlay
   conf/zephyr/riscv32_simple.overlay
   docs/ip-implementation-plan.md
@@ -30,7 +33,10 @@ required_files=(
   scripts/build_linux.sh
   scripts/build_buildroot.sh
   scripts/build_linux_buildroot.sh
+  scripts/build_riscv32_mixed_boot.sh
   scripts/build_zephyr.sh
+  scripts/riscv32_mixed_boot.S
+  scripts/riscv32_mixed_boot.ld
   scripts/run_gem5.py
   scripts/run_bench.sh
 )
@@ -41,6 +47,7 @@ required_exec=(
   scripts/build_linux.sh
   scripts/build_buildroot.sh
   scripts/build_linux_buildroot.sh
+  scripts/build_riscv32_mixed_boot.sh
   scripts/build_zephyr.sh
   scripts/run_bench.sh
 )
