@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Run gem5 simulations for riscv64_smp, riscv32_mixed, riscv32_simple targets.
 
-- riscv64_smp: Full-system Linux boot flow (deprecated fs_linux config backend).
+- riscv64_smp: Full-system Linux boot flow (conf/riscv64_smp.py backend).
 - riscv32_mixed: one gem5 launch with 6-core mixed topology and three Zephyr
   images (CPU0 AMP, CPU1 AMP, CPU2-5 SMP) in a single run.
 - riscv32_simple: single-core bare-metal Zephyr run (CPU0 only).
@@ -16,6 +16,7 @@ import re
 import shlex
 import subprocess
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Tuple
@@ -37,7 +38,10 @@ def auto_kernel_elf(kernel_hint: str) -> str:
     if hint.exists() and hint.name != "Image":
         return str(hint)
 
-    candidates: List[str] = ["build/linux/vmlinux"]
+    candidates: List[str] = []
+    for path in sorted(Path("sources/buildroot/output/build").glob("linux-*/vmlinux"), reverse=True):
+        candidates.append(str(path))
+    candidates.append("build/linux/vmlinux")
     if hint.name == "Image" and len(hint.parents) >= 4:
         candidates.append(str(hint.parents[3] / "vmlinux"))
     return find_first_existing(candidates)
@@ -65,11 +69,24 @@ def auto_bootloader() -> str:
     )
 
 
+def auto_initramfs() -> str:
+    return find_first_existing(
+        [
+            "build/initramfs/rootfs-shell.cpio",
+            "build/initramfs/rootfs.cpio",
+            "sources/buildroot/output/images/rootfs.cpio",
+            "build/buildroot/images/rootfs.cpio",
+        ]
+    )
+
+
 def default_riscv_config() -> str:
     return "sources/gem5/configs/deprecated/example/riscv/fs_linux.py"
 
 
 def default_config_for_target(target: str) -> str:
+    if target == "riscv64_smp":
+        return "conf/riscv64_smp.py"
     if target == "riscv32_mixed":
         return "conf/riscv32_mixed.py"
     return default_riscv_config()
@@ -140,12 +157,19 @@ def parser() -> argparse.ArgumentParser:
     # RV64 Linux inputs
     p.add_argument("--kernel", default="build/linux/arch/riscv/boot/Image")
     p.add_argument("--bootloader", default="")
+    p.add_argument("--initramfs", default="")
     p.add_argument("--disk-image", default="")
     p.add_argument("--allow-no-disk", action="store_true")
     p.add_argument(
         "--command-line",
-        default="console=ttyS0 root=/dev/vda rw init=/sbin/init",
+        default=(
+            "console=ttyS0,115200 earlycon=sbi root=/dev/ram0 rw "
+            "rdinit=/init loglevel=8 ignore_loglevel"
+        ),
     )
+    p.add_argument("--sys-clock", default="1GHz")
+    p.add_argument("--cpu-clock", default="3GHz")
+    p.add_argument("--num-cpus", type=int, default=1)
 
     # RV32 Zephyr inputs
     p.add_argument("--amp-cpu0-elf", default="build/zephyr/cluster0_amp_cpu0/zephyr/zephyr.elf")
@@ -158,7 +182,7 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--cpu-type", default="TimingSimpleCPU")
     # rv64 simple mode needs a larger tick budget to expose UART boot banners
     # (OpenSBI/Linux early boot) in terminal logs.
-    p.add_argument("--max-ticks-simple", type=int, default=20_000_000_000)
+    p.add_argument("--max-ticks-simple", type=int, default=1_200_000_000_000)
     p.add_argument("--max-ticks-complex", type=int, default=2_000_000_000)
     p.add_argument("--timeout-sec", type=int, default=1800)
 
@@ -216,10 +240,46 @@ def max_ticks_for_mode(args: argparse.Namespace) -> int:
 
 def rv64_command(
     args: argparse.Namespace, config_path: Path, logs_dir: Path
-) -> Tuple[List[str], str, str, str]:
+) -> Tuple[List[str], str, str, str, str, bool]:
     disk_image = args.disk_image or auto_disk_image()
     bootloader = args.bootloader or auto_bootloader()
+    initramfs = args.initramfs or auto_initramfs()
     kernel_elf = auto_kernel_elf(args.kernel) or args.kernel
+    use_conf_runtime = config_path.name == "riscv64_smp.py"
+    if use_conf_runtime:
+        cpu_type = mixed_cpu_type(args.cpu_type)
+        if args.cpu_type.lower() == "timingsimplecpu":
+            cpu_type = "atomic"
+        num_cpus = args.num_cpus if args.mode == "simple" else max(2, args.num_cpus)
+        cmd = [
+            args.gem5_bin,
+            f"--outdir={logs_dir}",
+            str(config_path),
+            "--num-cpus",
+            str(num_cpus),
+            "--cpu-type",
+            cpu_type,
+            "--sys-clock",
+            args.sys_clock,
+            "--cpu-clock",
+            args.cpu_clock,
+            "--kernel",
+            kernel_elf,
+            "--kernel-elf",
+            kernel_elf,
+            "--cmdline",
+            args.command_line,
+            "--max-ticks",
+            str(max_ticks_for_mode(args)),
+        ]
+        if bootloader:
+            cmd.extend(["--bootloader", bootloader])
+        if initramfs:
+            cmd.extend(["--initramfs", initramfs])
+        if disk_image:
+            cmd.extend(["--disk-image", disk_image])
+        return cmd, disk_image, kernel_elf, bootloader, initramfs, True
+
     cmd = [
         args.gem5_bin,
         f"--outdir={logs_dir}",
@@ -249,7 +309,7 @@ def rv64_command(
         cmd.extend(["--bootloader", bootloader])
     if disk_image:
         cmd.extend(["--disk-image", disk_image])
-    return cmd, disk_image, kernel_elf, bootloader
+    return cmd, disk_image, kernel_elf, bootloader, initramfs, False
 
 
 def rv32_mixed_command(
@@ -457,6 +517,63 @@ def run_one(cmd: List[str], log_path: Path, timeout_sec: int) -> Dict[str, objec
             return {"returncode": 124, "timeout": True}
 
 
+def run_one_until_markers(
+    cmd: List[str],
+    log_path: Path,
+    marker_log_path: Path,
+    success_markers: List[str],
+    timeout_sec: int,
+) -> Dict[str, object]:
+    with log_path.open("w", encoding="utf-8") as fp:
+        env = os.environ.copy()
+        gem5_configs = str(Path("sources/gem5/configs").resolve())
+        prev = env.get("PYTHONPATH", "")
+        env["PYTHONPATH"] = f"{gem5_configs}:{prev}" if prev else gem5_configs
+        proc = subprocess.Popen(
+            cmd,
+            stdout=fp,
+            stderr=subprocess.STDOUT,
+            env=env,
+        )
+
+        deadline = time.monotonic() + timeout_sec
+        while True:
+            if marker_log_path.exists():
+                text = marker_log_path.read_text(encoding="utf-8", errors="ignore")
+                if all(marker_present(text, marker) for marker in success_markers):
+                    proc.terminate()
+                    try:
+                        proc.wait(timeout=20)
+                    except subprocess.TimeoutExpired:
+                        proc.kill()
+                        proc.wait(timeout=5)
+                    return {
+                        "returncode": 0,
+                        "timeout": False,
+                        "terminated_on_marker": True,
+                        "raw_returncode": proc.returncode,
+                    }
+
+            rc = proc.poll()
+            if rc is not None:
+                return {"returncode": rc, "timeout": False}
+
+            if time.monotonic() >= deadline:
+                proc.terminate()
+                try:
+                    proc.wait(timeout=20)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.wait(timeout=5)
+                return {
+                    "returncode": 124,
+                    "timeout": True,
+                    "terminated_on_marker": False,
+                    "raw_returncode": proc.returncode,
+                }
+            time.sleep(2)
+
+
 def mixed_terminal_logs(logs_dir: Path) -> List[Path]:
     candidates = sorted(
         path for path in logs_dir.glob("system.platform.terminal*") if path.is_file()
@@ -503,17 +620,23 @@ def main() -> int:
     }
 
     if args.target == "riscv64_smp":
-        cmd, disk_image, kernel_elf, bootloader = rv64_command(args, config_path, logs_dir)
+        cmd, disk_image, kernel_elf, bootloader, initramfs, use_conf_runtime = rv64_command(
+            args, config_path, logs_dir
+        )
         manifest["commands"] = [cmd]
         manifest["disk_image"] = disk_image
         manifest["kernel_elf"] = kernel_elf
         manifest["bootloader"] = bootloader
+        manifest["initramfs"] = initramfs
+        manifest["conf_runtime"] = use_conf_runtime
 
         if not Path(kernel_elf).exists():
             missing.append(f"kernel ELF: {kernel_elf}")
         if not bootloader:
             missing.append("bootloader: not found (expected fw_jump.elf)")
-        if not disk_image and not args.allow_no_disk:
+        if use_conf_runtime and not initramfs:
+            missing.append("initramfs: not found (expected rootfs-shell.cpio/rootfs.cpio)")
+        if (not use_conf_runtime) and (not disk_image and not args.allow_no_disk):
             missing.append("disk image: not found (expected rootfs.ext2)")
 
         if args.dry_run:
@@ -537,8 +660,17 @@ def main() -> int:
         print(f"[INFO] Executing: {quoted(cmd)}")
         if not disk_image:
             print("[WARN] Running without disk image (--allow-no-disk).")
-        run_result = run_one(cmd, run_log, args.timeout_sec)
         terminal_log = logs_dir / "system.platform.terminal"
+        if use_conf_runtime and args.mode == "simple":
+            run_result = run_one_until_markers(
+                cmd,
+                run_log,
+                terminal_log,
+                ["INITRAMFS_SHELL_READY", "initramfs#"],
+                args.timeout_sec,
+            )
+        else:
+            run_result = run_one(cmd, run_log, args.timeout_sec)
         markers = read_markers_from_paths(
             [run_log, terminal_log],
             [
@@ -546,19 +678,34 @@ def main() -> int:
                 "Linux version",
                 "Loaded bootloader",
                 "Loaded kernel",
+                "Run /init as init process",
+                "INITRAMFS_SHELL_READY",
+                "initramfs#",
                 "simulate() limit reached",
                 "Kernel panic",
                 "fatal:",
             ],
         )
+        required_markers_ok = markers["Loaded bootloader"] and markers["Loaded kernel"]
+        if use_conf_runtime:
+            required_markers_ok = required_markers_ok and markers["Run /init as init process"]
+            if args.mode == "simple":
+                required_markers_ok = (
+                    required_markers_ok
+                    and markers["INITRAMFS_SHELL_READY"]
+                    and markers["initramfs#"]
+                )
         checks = {
             "returncode_ok": int(run_result["returncode"]) == 0,
-            "required_markers_ok": markers["Loaded bootloader"] and markers["Loaded kernel"],
+            "required_markers_ok": required_markers_ok,
             "terminal_markers_ok": (
                 markers["OpenSBI"] or markers["Linux version"]
             ),
             "uart_log_present": terminal_log.exists() and terminal_log.stat().st_size > 0,
             "panic_free": (not markers["Kernel panic"]) and (not markers["fatal:"]),
+            "shell_prompt_ok": (not use_conf_runtime)
+            or (args.mode != "simple")
+            or (markers["INITRAMFS_SHELL_READY"] and markers["initramfs#"]),
         }
         manifest.update({
             "run_log": str(run_log),
@@ -574,7 +721,7 @@ def main() -> int:
         manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
         print(f"[INFO] run_log={run_log}")
         print(f"[OK] Manifest: {manifest_path}")
-        return 1 if not all(checks.values()) else int(run_result["returncode"])
+        return 1 if not all(checks.values()) else 0
 
     if args.target == "riscv32_simple":
         cmd, simple_elf = rv32_simple_command(args, config_path, logs_dir)
