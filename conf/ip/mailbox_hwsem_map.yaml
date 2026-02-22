@@ -1,0 +1,84 @@
+schema_version: 1
+updated_at_utc: "2026-02-21T15:00:00Z"
+
+# NOTE:
+# - This is scaffolding for integration (not yet wired to real gem5 models).
+# - Final MMIO addresses/IRQs must be reconciled with the selected gem5 platform config.
+# - All addresses are 32-bit little-endian MMIO.
+
+platform:
+  name: riscv-mixed-ip-scaffold
+  bus:
+    addr_width_bits: 32
+    data_width_bits: 32
+    endianness: little
+
+mailbox:
+  register_layout:
+    TX_DATA: 0x0000
+    RX_DATA: 0x0004
+    STATUS: 0x0008
+    IRQ_EN: 0x000c
+    IRQ_STATUS: 0x0010
+    DOORBELL: 0x0014
+  instances:
+    - name: mbox_amp_cpu0_to_cpu1
+      base: 0x10020000
+      size: 0x1000
+      producer_core: 0
+      consumer_core: 1
+      irq: 32
+    - name: mbox_amp_cpu1_to_cpu0
+      base: 0x10021000
+      size: 0x1000
+      producer_core: 1
+      consumer_core: 0
+      irq: 33
+    - name: mbox_cluster0_to_cluster1
+      base: 0x10022000
+      size: 0x1000
+      producer_cluster: cluster0
+      consumer_cluster: cluster1
+      irq: 40
+    - name: mbox_cluster1_to_cluster0
+      base: 0x10023000
+      size: 0x1000
+      producer_cluster: cluster1
+      consumer_cluster: cluster0
+      irq: 41
+
+hwsem:
+  model: custom_mmio
+  base: 0x10030000
+  size: 0x2000
+  semaphore_count: 32
+  register_layout:
+    LOCK_BASE: 0x0000
+    OWNER_BASE: 0x0100
+    STATUS: 0x0200
+    IRQ_EN: 0x0204
+    IRQ_STATUS: 0x0208
+  semantics:
+    lock_behavior: test_and_set
+    unlock_policy: owner_only
+    owner_encoding: hart_id
+
+integration_contract:
+  zephyr:
+    dts_compatible:
+      mailbox: "omx,mailbox-mmio-v1"
+      hwsem: "omx,hwsem-mmio-v1"
+    TODO:
+      - add DTS nodes in overlay after gem5 address map is finalized
+      - add mailbox driver shim to OpenAMP transport path
+      - add hwsem lock API wrappers for AMP sync points
+  linux:
+    mailbox_framework: "mailbox_controller + mailbox_client"
+    hwspinlock_framework: "custom hwsem adapter"
+    TODO:
+      - add mailbox controller driver (platform_driver)
+      - add hwsem->hwspinlock glue and DT binding
+
+limits:
+  - no real gem5 device model is implemented yet
+  - no kernel/rtos runtime validation in this phase

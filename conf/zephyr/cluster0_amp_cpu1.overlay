@@ -1,0 +1,9 @@
+/* Cluster0 AMP CPU1 overlay placeholder (no-west flow) */
+/ {
+  zephyr,user {
+    omx-role = "cluster0-amp-cpu1";
+    omx-uart-policy = "per-core";
+    omx-mailbox = "placeholder";
+    omx-hwsem = "placeholder";
+  };
+};

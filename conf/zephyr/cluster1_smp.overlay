@@ -1,0 +1,9 @@
+/* Cluster1 SMP overlay placeholder (no-west flow) */
+/ {
+  zephyr,user {
+    omx-role = "cluster1-smp";
+    omx-uart-policy = "shared";
+    omx-mailbox = "placeholder";
+    omx-hwsem = "placeholder";
+  };
+};
