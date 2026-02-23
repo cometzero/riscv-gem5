@@ -2,6 +2,7 @@
 
 - Date: 2026-02-22
 - Audience: reproducible bring-up for RV32 simple/mixed + RV64 SMP targets
+- Related summary: `docs/implementation-change-guide.md`
 
 ## 1) Recommendation
 

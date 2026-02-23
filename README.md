@@ -173,6 +173,7 @@ Current submodule URLs tracked by `.gitmodules`:
 ## Docs Index
 
 - `docs/execution-guide.md`: end-to-end execution flow
+- `docs/implementation-change-guide.md`: current status + recent changes
 - `docs/design.md`: architecture and target design
 - `docs/review.md`: design/plan review notes
 - `docs/web-dashboard.md`: dashboard API/usage
