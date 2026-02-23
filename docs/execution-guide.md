@@ -215,7 +215,14 @@ Pass criteria:
 - `riscv_hybrid` run manifest `checks.all_passed` (all check fields true)
 - `riscv_hybrid` terminal logs confirm both domains in one gem5 run:
   - RV32 mixed DONE + ROLE_SYNC markers (`system32.platform.terminal*`)
-  - RV64 Linux boot marker `Linux version` (`system64.platform.terminal`)
+  - RV64 Linux strict markers (`system64.platform.terminal`):
+    - `OpenSBI`
+    - `Linux version`
+    - `Loaded bootloader`
+    - `Loaded kernel`
+    - `Run /init as init process`
+    - `INITRAMFS_SHELL_READY`
+    - `initramfs#`
 - benchmark manifest exists for all enabled targets
 
 ## 7) Known Caveat

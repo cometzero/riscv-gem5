@@ -955,6 +955,9 @@ def main() -> int:
                     "RISCV32 MIXED CLUSTER1 SMP WORKLOAD DONE",
                     "RISCV32 MIXED ROLE_SYNC mask=0x7 status=READY",
                     "Linux version",
+                    "Run /init as init process",
+                    "INITRAMFS_SHELL_READY",
+                    "initramfs#",
                 ],
                 args.timeout_sec,
             )
@@ -980,6 +983,9 @@ def main() -> int:
             "Linux version",
             "Loaded bootloader",
             "Loaded kernel",
+            "Run /init as init process",
+            "INITRAMFS_SHELL_READY",
+            "initramfs#",
             "Kernel panic",
             "fatal:",
             "panic",
@@ -1002,15 +1008,28 @@ def main() -> int:
             "single_command": len(manifest["commands"]) == 1,
             "returncode_ok": (int(run_result["returncode"]) == 0) or timeout_accepted,
             "rv32_markers_ok": all(markers[m] for m in rv32_workload_markers),
-            "rv64_boot_ok": markers["OpenSBI"] and markers["Linux version"],
+            "rv64_boot_ok": (
+                markers["OpenSBI"]
+                and markers["Linux version"]
+                and markers["Run /init as init process"]
+                and markers["INITRAMFS_SHELL_READY"]
+                and markers["initramfs#"]
+            ),
             "required_markers_ok": (
                 all(markers[m] for m in rv32_workload_markers)
                 and markers["OpenSBI"]
                 and markers["Linux version"]
                 and markers["Loaded bootloader"]
                 and markers["Loaded kernel"]
+                and markers["Run /init as init process"]
+                and markers["INITRAMFS_SHELL_READY"]
+                and markers["initramfs#"]
             ),
-                "panic_free": (not markers["Kernel panic"]) and (not markers["panic"]) and (not markers["fatal:"]),
+            "panic_free": (
+                (not markers["Kernel panic"])
+                and (not markers["panic"])
+                and (not markers["fatal:"])
+            ),
         }
 
         manifest.update(
