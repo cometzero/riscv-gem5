@@ -88,8 +88,11 @@ cd /build/risc-v/riscv-gem5
 ./scripts/run_gem5.py --target riscv32_simple --mode simple
 ./scripts/run_gem5.py --target riscv_hybrid --mode simple
 # keep hybrid running until timeout (disable marker early-stop)
-./scripts/run_gem5.py --target riscv_hybrid --mode simple --timeout-sec 300 --no-stop-on-marker
+./scripts/run_gem5.py --target riscv_hybrid --mode simple --timeout-sec 900 --no-stop-on-marker
 ```
+
+`riscv_hybrid` run prints staged status and also writes it to
+`stage_report` in the run manifest.
 
 Use benchmark wrapper:
 

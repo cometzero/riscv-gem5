@@ -550,6 +550,26 @@ def marker_present(text: str, marker: str, allow_interleaved: bool = False) -> b
     return needle in hay_all or is_subsequence(needle, hay_all)
 
 
+def evaluate_stage(
+    name: str,
+    markers: Dict[str, bool],
+    required: List[str],
+    forbidden: List[str] | None = None,
+) -> Dict[str, object]:
+    forbidden = forbidden or []
+    missing = [m for m in required if not markers.get(m, False)]
+    forbidden_hits = [m for m in forbidden if markers.get(m, False)]
+    passed = (not missing) and (not forbidden_hits)
+    return {
+        "name": name,
+        "passed": passed,
+        "required": required,
+        "missing": missing,
+        "forbidden": forbidden,
+        "forbidden_hits": forbidden_hits,
+    }
+
+
 def read_markers_from_paths(
     paths: List[Path], markers: List[str], allow_interleaved: bool = False
 ) -> Dict[str, bool]:
@@ -937,6 +957,11 @@ def main() -> int:
         print(f"[INFO] Executing: {quoted(cmd)}")
         if not disk_image:
             print("[WARN] Running hybrid without rv64 disk image (--allow-no-disk path).")
+        if args.timeout_sec < 900:
+            print(
+                "[WARN] timeout-sec is short for strict hybrid marker validation; "
+                "recommend >= 900 seconds."
+            )
         expected_marker_logs = [
             logs_dir / "system32.platform.terminal",
             logs_dir / "system32.platform.terminal1",
@@ -1002,35 +1027,72 @@ def main() -> int:
             **rv32_observed,
             **rv64_observed,
         }
+        stage_report = [
+            evaluate_stage(
+                "rv32_workloads_ready",
+                markers,
+                rv32_workload_markers,
+            ),
+            evaluate_stage(
+                "rv64_boot_banner",
+                markers,
+                ["OpenSBI", "Linux version"],
+            ),
+            evaluate_stage(
+                "rv64_kernel_loaded",
+                markers,
+                ["Loaded bootloader", "Loaded kernel"],
+            ),
+            evaluate_stage(
+                "rv64_init_handoff",
+                markers,
+                ["Run /init as init process"],
+            ),
+            evaluate_stage(
+                "rv64_shell_ready",
+                markers,
+                ["INITRAMFS_SHELL_READY", "initramfs#"],
+            ),
+            evaluate_stage(
+                "panic_free",
+                markers,
+                [],
+                ["Kernel panic", "panic", "fatal:"],
+            ),
+        ]
+        stage_map = {str(stage["name"]): bool(stage["passed"]) for stage in stage_report}
         timed_out = bool(run_result.get("timeout", False))
         timeout_accepted = (not stop_on_marker) and timed_out
         checks = {
             "single_command": len(manifest["commands"]) == 1,
             "returncode_ok": (int(run_result["returncode"]) == 0) or timeout_accepted,
-            "rv32_markers_ok": all(markers[m] for m in rv32_workload_markers),
+            "rv32_markers_ok": stage_map["rv32_workloads_ready"],
             "rv64_boot_ok": (
-                markers["OpenSBI"]
-                and markers["Linux version"]
-                and markers["Run /init as init process"]
-                and markers["INITRAMFS_SHELL_READY"]
-                and markers["initramfs#"]
+                stage_map["rv64_boot_banner"]
+                and stage_map["rv64_init_handoff"]
+                and stage_map["rv64_shell_ready"]
             ),
             "required_markers_ok": (
-                all(markers[m] for m in rv32_workload_markers)
-                and markers["OpenSBI"]
-                and markers["Linux version"]
-                and markers["Loaded bootloader"]
-                and markers["Loaded kernel"]
-                and markers["Run /init as init process"]
-                and markers["INITRAMFS_SHELL_READY"]
-                and markers["initramfs#"]
+                stage_map["rv32_workloads_ready"]
+                and stage_map["rv64_boot_banner"]
+                and stage_map["rv64_kernel_loaded"]
+                and stage_map["rv64_init_handoff"]
+                and stage_map["rv64_shell_ready"]
             ),
-            "panic_free": (
-                (not markers["Kernel panic"])
-                and (not markers["panic"])
-                and (not markers["fatal:"])
-            ),
+            "panic_free": stage_map["panic_free"],
         }
+
+        print("[INFO] Hybrid staged report:")
+        for stage in stage_report:
+            status = "PASS" if bool(stage["passed"]) else "FAIL"
+            missing = list(stage["missing"])
+            forbidden_hits = list(stage["forbidden_hits"])
+            detail = ""
+            if missing:
+                detail += f" missing={','.join(missing)}"
+            if forbidden_hits:
+                detail += f" forbidden={','.join(forbidden_hits)}"
+            print(f"[STAGE][{status}] {stage['name']}{detail}")
 
         manifest.update(
             {
@@ -1040,6 +1102,7 @@ def main() -> int:
                 "run_result": run_result,
                 "timeout_accepted": timeout_accepted,
                 "markers": markers,
+                "stage_report": stage_report,
                 "checks": checks,
                 "validation": {
                     "single_run": True,

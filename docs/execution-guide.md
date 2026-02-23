@@ -133,15 +133,24 @@ cd /build/risc-v/riscv-gem5
 python3 scripts/run_gem5.py --target riscv_hybrid --mode simple
 ```
 
-기본 동작은 성공 마커(RV32 DONE/ROLE_SYNC + RV64 Linux version)를 찾으면
+기본 동작은 성공 마커(RV32 DONE/ROLE_SYNC + RV64 strict markers)를 찾으면
 `--timeout-sec` 전에 조기 종료합니다. 300초 동안 계속 실행하려면:
 
 ```bash
-python3 scripts/run_gem5.py --target riscv_hybrid --mode simple --timeout-sec 300 --no-stop-on-marker
+python3 scripts/run_gem5.py --target riscv_hybrid --mode simple --timeout-sec 900 --no-stop-on-marker
 ```
 
 `--no-stop-on-marker` 사용 시 timeout 종료(코드 124)라도 필수 마커가 충족되고
 panic이 없으면 manifest 검증은 pass로 처리됩니다.
+
+`riscv_hybrid` 실행 후 콘솔과 manifest에 단계별 보고가 출력됩니다:
+
+- `rv32_workloads_ready`
+- `rv64_boot_banner`
+- `rv64_kernel_loaded`
+- `rv64_init_handoff`
+- `rv64_shell_ready`
+- `panic_free`
 
 ## 5.5 Bench wrappers
 
