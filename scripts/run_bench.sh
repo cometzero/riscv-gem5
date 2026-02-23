@@ -20,7 +20,7 @@ Usage:
   scripts/run_bench.sh [options]
 
 Options:
-  --target <riscv64_smp|riscv32_mixed|riscv32_simple>
+  --target <riscv64_smp|riscv32_mixed|riscv32_simple|riscv_hybrid>
   --mode <simple|complex>
   --timestamp <UTC-TS>          Reuse one timestamp for logs/results
   --jobs <n>
@@ -48,7 +48,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 case "${TARGET}" in
-  riscv64_smp|riscv32_mixed|riscv32_simple) ;;
+  riscv64_smp|riscv32_mixed|riscv32_simple|riscv_hybrid) ;;
   *) echo "[ERROR] Invalid target: ${TARGET}" >&2; exit 1 ;;
 esac
 
@@ -59,6 +59,11 @@ esac
 
 if [[ "${TARGET}" == "riscv32_simple" && "${MODE}" != "simple" ]]; then
   echo "[ERROR] riscv32_simple supports only --mode simple" >&2
+  exit 1
+fi
+
+if [[ "${TARGET}" == "riscv_hybrid" && "${MODE}" != "simple" ]]; then
+  echo "[ERROR] riscv_hybrid supports only --mode simple" >&2
   exit 1
 fi
 
@@ -149,6 +154,12 @@ if [[ "${TARGET}" == "riscv32_simple" ]]; then
   BENCH_STEPS=(
     "zephyr-boot-check"
     "cpu0-loop-workload"
+  )
+elif [[ "${TARGET}" == "riscv_hybrid" ]]; then
+  WORKLOAD_DESC="single gem5 run with rv32_mixed + rv64 Linux"
+  BENCH_STEPS=(
+    "hybrid-rv32-mixed-check"
+    "hybrid-rv64-linux-boot-check"
   )
 elif [[ "${MODE}" == "simple" ]]; then
   WORKLOAD_DESC="smoke + memory micro-benchmark"

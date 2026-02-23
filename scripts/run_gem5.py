@@ -5,6 +5,7 @@
 - riscv32_mixed: one gem5 launch with 6-core mixed topology and three Zephyr
   images (CPU0 AMP, CPU1 AMP, CPU2-5 SMP) in a single run.
 - riscv32_simple: single-core bare-metal Zephyr run (CPU0 only).
+- riscv_hybrid: one gem5 launch containing both riscv32_mixed + riscv64.
 """
 
 from __future__ import annotations
@@ -88,6 +89,8 @@ def default_config_for_target(target: str) -> str:
         return "conf/riscv64_smp.py"
     if target == "riscv32_mixed":
         return "conf/riscv32_mixed.py"
+    if target == "riscv_hybrid":
+        return "conf/riscv_hybrid.py"
     return default_riscv_config()
 
 
@@ -145,10 +148,14 @@ def maybe_build_mixed_boot(args: argparse.Namespace) -> None:
 
 def parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
-        description="Run gem5 for riscv64_smp/riscv32_mixed/riscv32_simple",
+        description="Run gem5 for riscv64_smp/riscv32_mixed/riscv32_simple/riscv_hybrid",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    p.add_argument("--target", choices=["riscv64_smp", "riscv32_mixed", "riscv32_simple"], required=True)
+    p.add_argument(
+        "--target",
+        choices=["riscv64_smp", "riscv32_mixed", "riscv32_simple", "riscv_hybrid"],
+        required=True,
+    )
     p.add_argument("--mode", choices=["simple", "complex"], default="simple")
     p.add_argument("--gem5-bin", default="sources/gem5/build/RISCV/gem5.opt")
     p.add_argument("--config", default="")
@@ -383,6 +390,64 @@ def rv32_mixed_command(
     return cmd, assignments, required_markers, role_markers
 
 
+def rv_hybrid_command(
+    args: argparse.Namespace, config_path: Path, logs_dir: Path
+) -> Tuple[List[str], str, str, str, str]:
+    bootloader = args.bootloader or auto_bootloader()
+    initramfs = args.initramfs or auto_initramfs()
+    kernel_elf = auto_kernel_elf(args.kernel) or args.kernel
+    disk_image = args.disk_image
+    if not disk_image:
+        if "root=/dev/ram" in args.command_line:
+            disk_image = ""
+        else:
+            disk_image = auto_disk_image()
+
+    rv32_cpu_type = mixed_cpu_type(args.cpu_type)
+    rv64_cpu_type = "atomic" if args.cpu_type.lower() == "timingsimplecpu" else mixed_cpu_type(args.cpu_type)
+    abs_max_tick = max_ticks_for_mode(args)
+
+    cmd = [
+        args.gem5_bin,
+        f"--outdir={logs_dir}",
+        str(config_path),
+        "--max-ticks",
+        str(abs_max_tick),
+        "--rv32-cpu-type",
+        rv32_cpu_type,
+        "--rv64-cpu-type",
+        rv64_cpu_type,
+        "--rv64-num-cpus",
+        str(max(4, args.num_cpus)),
+        "--sys-clock",
+        args.sys_clock,
+        "--rv64-cpu-clock",
+        args.cpu_clock,
+        "--boot-elf",
+        args.mixed_boot_elf,
+        "--amp-cpu0-elf",
+        args.amp_cpu0_elf,
+        "--amp-cpu1-elf",
+        args.amp_cpu1_elf,
+        "--smp-elf",
+        args.smp_elf,
+        "--kernel",
+        kernel_elf,
+        "--kernel-elf",
+        kernel_elf,
+        "--cmdline",
+        args.command_line,
+    ]
+    if bootloader:
+        cmd.extend(["--bootloader", bootloader])
+    if initramfs:
+        cmd.extend(["--initramfs", initramfs])
+    if disk_image:
+        cmd.extend(["--disk-image", disk_image])
+
+    return cmd, disk_image, kernel_elf, bootloader, initramfs
+
+
 def rv32_simple_command(
     args: argparse.Namespace, config_path: Path, logs_dir: Path
 ) -> Tuple[List[str], str]:
@@ -578,6 +643,66 @@ def run_one_until_markers(
             time.sleep(2)
 
 
+def run_one_until_markers_multi(
+    cmd: List[str],
+    log_path: Path,
+    marker_log_paths: List[Path],
+    success_markers: List[str],
+    timeout_sec: int,
+) -> Dict[str, object]:
+    with log_path.open("w", encoding="utf-8") as fp:
+        env = os.environ.copy()
+        gem5_configs = str(Path("sources/gem5/configs").resolve())
+        prev = env.get("PYTHONPATH", "")
+        env["PYTHONPATH"] = f"{gem5_configs}:{prev}" if prev else gem5_configs
+        proc = subprocess.Popen(
+            cmd,
+            stdout=fp,
+            stderr=subprocess.STDOUT,
+            env=env,
+        )
+
+        deadline = time.monotonic() + timeout_sec
+        while True:
+            merged = ""
+            for marker_path in marker_log_paths:
+                if marker_path.exists():
+                    merged += marker_path.read_text(encoding="utf-8", errors="ignore")
+                    merged += "\n"
+            if merged and all(marker_present(merged, marker) for marker in success_markers):
+                proc.terminate()
+                try:
+                    proc.wait(timeout=20)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.wait(timeout=5)
+                return {
+                    "returncode": 0,
+                    "timeout": False,
+                    "terminated_on_marker": True,
+                    "raw_returncode": proc.returncode,
+                }
+
+            rc = proc.poll()
+            if rc is not None:
+                return {"returncode": rc, "timeout": False}
+
+            if time.monotonic() >= deadline:
+                proc.terminate()
+                try:
+                    proc.wait(timeout=20)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.wait(timeout=5)
+                return {
+                    "returncode": 124,
+                    "timeout": True,
+                    "terminated_on_marker": False,
+                    "raw_returncode": proc.returncode,
+                }
+            time.sleep(2)
+
+
 def mixed_terminal_logs(logs_dir: Path) -> List[Path]:
     candidates = sorted(
         path for path in logs_dir.glob("system.platform.terminal*") if path.is_file()
@@ -585,6 +710,16 @@ def mixed_terminal_logs(logs_dir: Path) -> List[Path]:
     if candidates:
         return candidates
     return [logs_dir / "system.platform.terminal"]
+
+
+def hybrid_terminal_logs(logs_dir: Path) -> Tuple[List[Path], List[Path]]:
+    rv32_logs = sorted(path for path in logs_dir.glob("system32.platform.terminal*") if path.is_file())
+    rv64_logs = sorted(path for path in logs_dir.glob("system64.platform.terminal*") if path.is_file())
+    if not rv32_logs:
+        rv32_logs = [logs_dir / "system32.platform.terminal"]
+    if not rv64_logs:
+        rv64_logs = [logs_dir / "system64.platform.terminal"]
+    return rv32_logs, rv64_logs
 
 
 def main() -> int:
@@ -724,6 +859,161 @@ def main() -> int:
         })
         manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
         print(f"[INFO] run_log={run_log}")
+        print(f"[OK] Manifest: {manifest_path}")
+        return 1 if not all(checks.values()) else 0
+
+    if args.target == "riscv_hybrid":
+        cmd, disk_image, kernel_elf, bootloader, initramfs = rv_hybrid_command(
+            args, config_path, logs_dir
+        )
+        manifest["commands"] = [cmd]
+        manifest["kernel_elf"] = kernel_elf
+        manifest["bootloader"] = bootloader
+        manifest["initramfs"] = initramfs
+        manifest["disk_image"] = disk_image
+        manifest["hybrid_components"] = {
+            "rv32_mixed": {
+                "boot_elf": args.mixed_boot_elf,
+                "amp_cpu0_elf": args.amp_cpu0_elf,
+                "amp_cpu1_elf": args.amp_cpu1_elf,
+                "smp_elf": args.smp_elf,
+            },
+            "rv64": {
+                "kernel_elf": kernel_elf,
+                "bootloader": bootloader,
+                "initramfs": initramfs,
+            },
+        }
+
+        if not Path(kernel_elf).exists():
+            missing.append(f"kernel ELF: {kernel_elf}")
+        if not bootloader:
+            missing.append("bootloader: not found (expected fw_jump.elf)")
+        if not initramfs:
+            missing.append("initramfs: not found (expected rootfs-shell.cpio/rootfs.cpio)")
+        for name, elf in [
+            ("amp_cpu0_elf", args.amp_cpu0_elf),
+            ("amp_cpu1_elf", args.amp_cpu1_elf),
+            ("smp_elf", args.smp_elf),
+        ]:
+            if not Path(elf).exists():
+                missing.append(f"{name}: {elf}")
+
+        if not args.dry_run:
+            try:
+                maybe_build_mixed_boot(args)
+            except Exception as exc:
+                missing.append(f"mixed_boot_build: {exc}")
+
+        if not Path(args.mixed_boot_elf).exists():
+            missing.append(f"mixed_boot_elf: {args.mixed_boot_elf}")
+
+        if args.dry_run:
+            print("[INFO] DRY-RUN mode")
+            for item in missing:
+                print(f"[WARN] Missing path: {item}")
+            print(f"[INFO] command={quoted(cmd)}")
+            manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+            print(f"[OK] Manifest: {manifest_path}")
+            return 0
+
+        if missing:
+            for item in missing:
+                print(f"[ERROR] Missing path: {item}", file=sys.stderr)
+            manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+            return 2
+
+        run_log = logs_dir / "run_riscv_hybrid.log"
+        print(f"[INFO] Executing: {quoted(cmd)}")
+        if not disk_image:
+            print("[WARN] Running hybrid without rv64 disk image (--allow-no-disk path).")
+        expected_marker_logs = [
+            logs_dir / "system32.platform.terminal",
+            logs_dir / "system32.platform.terminal1",
+            logs_dir / "system32.platform.terminal2",
+            logs_dir / "system64.platform.terminal",
+        ]
+        if args.mode == "simple":
+            run_result = run_one_until_markers_multi(
+                cmd,
+                run_log,
+                expected_marker_logs,
+                [
+                    "RISCV32 MIXED AMP CPU0 WORKLOAD DONE",
+                    "RISCV32 MIXED AMP CPU1 WORKLOAD DONE",
+                    "RISCV32 MIXED CLUSTER1 SMP WORKLOAD DONE",
+                    "RISCV32 MIXED ROLE_SYNC mask=0x7 status=READY",
+                    "Linux version",
+                ],
+                args.timeout_sec,
+            )
+        else:
+            run_result = run_one(cmd, run_log, args.timeout_sec)
+        rv32_logs, rv64_logs = hybrid_terminal_logs(logs_dir)
+
+        rv32_workload_markers = [
+            "RISCV32 MIXED AMP CPU0 WORKLOAD DONE",
+            "RISCV32 MIXED AMP CPU1 WORKLOAD DONE",
+            "RISCV32 MIXED CLUSTER1 SMP WORKLOAD DONE",
+            "RISCV32 MIXED ROLE_SYNC mask=0x7 status=READY",
+        ]
+        rv32_role_markers = [
+            "role=cluster0-amp-cpu0",
+            "role=cluster0-amp-cpu1",
+            "role=cluster1-smp",
+        ]
+        rv64_markers = [
+            "OpenSBI",
+            "Linux version",
+            "Loaded bootloader",
+            "Loaded kernel",
+            "Kernel panic",
+            "fatal:",
+            "panic",
+        ]
+
+        rv32_observed = read_markers_from_paths(
+            [run_log, *rv32_logs],
+            rv32_workload_markers + rv32_role_markers,
+            allow_interleaved=False,
+        )
+        rv64_observed = read_markers_from_paths([run_log, *rv64_logs], rv64_markers)
+
+        markers = {
+            **rv32_observed,
+            **rv64_observed,
+        }
+        checks = {
+            "single_command": len(manifest["commands"]) == 1,
+            "returncode_ok": int(run_result["returncode"]) == 0,
+            "rv32_markers_ok": all(markers[m] for m in rv32_workload_markers),
+            "rv64_boot_ok": markers["OpenSBI"] and markers["Linux version"],
+            "required_markers_ok": (
+                all(markers[m] for m in rv32_workload_markers)
+                and markers["OpenSBI"]
+                and markers["Linux version"]
+                and markers["Loaded bootloader"]
+                and markers["Loaded kernel"]
+            ),
+            "panic_free": (not markers["Kernel panic"]) and (not markers["panic"]) and (not markers["fatal:"]),
+        }
+
+        manifest.update(
+            {
+                "run_log": str(run_log),
+                "terminal_logs_rv32": [str(path) for path in rv32_logs],
+                "terminal_logs_rv64": [str(path) for path in rv64_logs],
+                "run_result": run_result,
+                "markers": markers,
+                "checks": checks,
+                "validation": {
+                    "single_run": True,
+                    "single_command": checks["single_command"],
+                    "all_passed": all(checks.values()),
+                },
+            }
+        )
+        manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
         print(f"[OK] Manifest: {manifest_path}")
         return 1 if not all(checks.values()) else 0
 
