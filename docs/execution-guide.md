@@ -140,6 +140,9 @@ python3 scripts/run_gem5.py --target riscv_hybrid --mode simple
 python3 scripts/run_gem5.py --target riscv_hybrid --mode simple --timeout-sec 300 --no-stop-on-marker
 ```
 
+`--no-stop-on-marker` 사용 시 timeout 종료(코드 124)라도 필수 마커가 충족되고
+panic이 없으면 manifest 검증은 pass로 처리됩니다.
+
 ## 5.5 Bench wrappers
 
 ```bash

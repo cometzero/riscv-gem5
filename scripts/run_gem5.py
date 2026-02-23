@@ -996,9 +996,11 @@ def main() -> int:
             **rv32_observed,
             **rv64_observed,
         }
+        timed_out = bool(run_result.get("timeout", False))
+        timeout_accepted = (not stop_on_marker) and timed_out
         checks = {
             "single_command": len(manifest["commands"]) == 1,
-            "returncode_ok": int(run_result["returncode"]) == 0,
+            "returncode_ok": (int(run_result["returncode"]) == 0) or timeout_accepted,
             "rv32_markers_ok": all(markers[m] for m in rv32_workload_markers),
             "rv64_boot_ok": markers["OpenSBI"] and markers["Linux version"],
             "required_markers_ok": (
@@ -1008,7 +1010,7 @@ def main() -> int:
                 and markers["Loaded bootloader"]
                 and markers["Loaded kernel"]
             ),
-            "panic_free": (not markers["Kernel panic"]) and (not markers["panic"]) and (not markers["fatal:"]),
+                "panic_free": (not markers["Kernel panic"]) and (not markers["panic"]) and (not markers["fatal:"]),
         }
 
         manifest.update(
@@ -1017,6 +1019,7 @@ def main() -> int:
                 "terminal_logs_rv32": [str(path) for path in rv32_logs],
                 "terminal_logs_rv64": [str(path) for path in rv64_logs],
                 "run_result": run_result,
+                "timeout_accepted": timeout_accepted,
                 "markers": markers,
                 "checks": checks,
                 "validation": {
