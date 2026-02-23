@@ -126,7 +126,14 @@ cd /build/risc-v/riscv-gem5
 python3 scripts/run_gem5.py --target riscv32_simple --mode simple
 ```
 
-## 5.4 Bench wrappers
+## 5.4 RV32 mixed + RV64 hybrid (single gem5 process)
+
+```bash
+cd /build/risc-v/riscv-gem5
+python3 scripts/run_gem5.py --target riscv_hybrid --mode simple
+```
+
+## 5.5 Bench wrappers
 
 ```bash
 cd /build/risc-v/riscv-gem5
@@ -135,7 +142,7 @@ scripts/run_bench.sh --target riscv32_mixed --mode complex --ipc-case mailbox_pi
 scripts/run_bench.sh --target riscv32_simple --mode simple
 ```
 
-## 5.5 Web dashboard (headless server)
+## 5.6 Web dashboard (headless server)
 
 ```bash
 cd /build/risc-v/riscv-gem5
@@ -195,6 +202,10 @@ Pass criteria:
   - `RISCV32 MIXED AMP CPU0 WORKLOAD DONE`
   - `RISCV32 MIXED AMP CPU1 WORKLOAD DONE`
   - `RISCV32 MIXED CLUSTER1 SMP WORKLOAD DONE`
+- `riscv_hybrid` run manifest `checks.all_passed` (all check fields true)
+- `riscv_hybrid` terminal logs confirm both domains in one gem5 run:
+  - RV32 mixed DONE + ROLE_SYNC markers (`system32.platform.terminal*`)
+  - RV64 Linux boot marker `Linux version` (`system64.platform.terminal`)
 - benchmark manifest exists for all enabled targets
 
 ## 7) Known Caveat

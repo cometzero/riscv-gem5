@@ -7,6 +7,7 @@ Reproducible gem5-based RISC-V simulation workspace for:
   - Cluster1: CPU2/CPU3/CPU4/CPU5 (SMP)
 - **riscv32_simple**: single-core Zephyr smoke target (CPU0)
 - **riscv64_smp**: Linux full-system SMP target
+- **riscv_hybrid**: one gem5 process running `riscv32_mixed` + `riscv64`
 
 The repository is structured for deterministic bring-up:
 - pinned submodules (`conf/submodules.lock.json`)
@@ -85,6 +86,7 @@ cd /build/risc-v/riscv-gem5
 ./scripts/run_gem5.py --target riscv64_smp --mode simple
 ./scripts/run_gem5.py --target riscv32_mixed --mode complex
 ./scripts/run_gem5.py --target riscv32_simple --mode simple
+./scripts/run_gem5.py --target riscv_hybrid --mode simple
 ```
 
 Use benchmark wrapper:
