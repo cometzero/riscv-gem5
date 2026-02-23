@@ -21,6 +21,7 @@ echo "[INFO] python compile checks"
 python3 -m py_compile \
   conf/riscv64_smp.py \
   conf/riscv32_mixed.py \
+  conf/riscv_hybrid.py \
   scripts/run_gem5.py \
   scripts/web_dashboard.py
 

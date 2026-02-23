@@ -10,6 +10,7 @@ echo "[INFO] dry-run gem5 scripts"
 python3 scripts/run_gem5.py --target riscv64_smp --mode simple --timestamp "${TS}" --dry-run
 python3 scripts/run_gem5.py --target riscv32_mixed --mode complex --timestamp "${TS}" --dry-run
 python3 scripts/run_gem5.py --target riscv32_simple --mode simple --timestamp "${TS}" --dry-run
+python3 scripts/run_gem5.py --target riscv_hybrid --mode simple --timestamp "${TS}" --dry-run
 
 echo "[INFO] dry-run benchmark wrapper"
 scripts/run_bench.sh --target riscv64_smp --mode simple --timestamp "${TS}" --dry-run
@@ -54,10 +55,12 @@ assert_dir "workloads/results/${TS}"
 assert_dir "build/logs/riscv64_smp/${TS}"
 assert_dir "build/logs/riscv32_mixed/${TS}"
 assert_dir "build/logs/riscv32_simple/${TS}"
+assert_dir "build/logs/riscv_hybrid/${TS}"
 
 assert_file "workloads/results/${TS}/run_gem5_riscv64_smp_simple.json"
 assert_file "workloads/results/${TS}/run_gem5_riscv32_mixed_complex.json"
 assert_file "workloads/results/${TS}/run_gem5_riscv32_simple_simple.json"
+assert_file "workloads/results/${TS}/run_gem5_riscv_hybrid_simple.json"
 assert_file "workloads/results/${TS}/bench_riscv64_smp_simple.json"
 assert_file "workloads/results/${TS}/bench_riscv32_mixed_complex.json"
 assert_file "workloads/results/${TS}/bench_riscv32_simple_simple.json"
@@ -69,11 +72,14 @@ assert_link_target "workloads/results/latest" "${TS}"
 assert_link_target "workloads/results/latest-riscv64_smp-simple" "${TS}"
 assert_link_target "workloads/results/latest-riscv32_mixed-complex" "${TS}"
 assert_link_target "workloads/results/latest-riscv32_simple-simple" "${TS}"
+assert_link_target "workloads/results/latest-riscv_hybrid-simple" "${TS}"
 assert_link_target "build/logs/riscv64_smp/latest" "${TS}"
 assert_link_target "build/logs/riscv64_smp/latest-simple" "${TS}"
 assert_link_target "build/logs/riscv32_mixed/latest" "${TS}"
 assert_link_target "build/logs/riscv32_mixed/latest-complex" "${TS}"
 assert_link_target "build/logs/riscv32_simple/latest" "${TS}"
 assert_link_target "build/logs/riscv32_simple/latest-simple" "${TS}"
+assert_link_target "build/logs/riscv_hybrid/latest" "${TS}"
+assert_link_target "build/logs/riscv_hybrid/latest-simple" "${TS}"
 
 echo "[OK] integration dry-run test passed"

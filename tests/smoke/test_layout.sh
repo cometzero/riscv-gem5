@@ -8,6 +8,7 @@ required_files=(
   conf/riscv64_smp.py
   conf/riscv32_mixed.py
   conf/riscv32_simple.py
+  conf/riscv_hybrid.py
   conf/submodules.lock.json
   conf/ip/mailbox_hwsem_map.yaml
   conf/zephyr/cluster0_amp_cpu0.conf
