@@ -133,6 +133,13 @@ cd /build/risc-v/riscv-gem5
 python3 scripts/run_gem5.py --target riscv_hybrid --mode simple
 ```
 
+기본 동작은 성공 마커(RV32 DONE/ROLE_SYNC + RV64 Linux version)를 찾으면
+`--timeout-sec` 전에 조기 종료합니다. 300초 동안 계속 실행하려면:
+
+```bash
+python3 scripts/run_gem5.py --target riscv_hybrid --mode simple --timeout-sec 300 --no-stop-on-marker
+```
+
 ## 5.5 Bench wrappers
 
 ```bash

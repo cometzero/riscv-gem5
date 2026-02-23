@@ -191,6 +191,14 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--max-ticks-simple", type=int, default=1_200_000_000_000)
     p.add_argument("--max-ticks-complex", type=int, default=2_000_000_000)
     p.add_argument("--timeout-sec", type=int, default=1800)
+    p.add_argument(
+        "--no-stop-on-marker",
+        action="store_true",
+        help=(
+            "Do not terminate early when success markers are observed "
+            "(applies to riscv_hybrid simple mode)."
+        ),
+    )
 
     p.add_argument("--results-root", default="workloads/results")
     p.add_argument("--log-root", default="build/logs")
@@ -866,7 +874,9 @@ def main() -> int:
         cmd, disk_image, kernel_elf, bootloader, initramfs = rv_hybrid_command(
             args, config_path, logs_dir
         )
+        stop_on_marker = args.mode == "simple" and (not args.no_stop_on_marker)
         manifest["commands"] = [cmd]
+        manifest["stop_on_marker"] = stop_on_marker
         manifest["kernel_elf"] = kernel_elf
         manifest["bootloader"] = bootloader
         manifest["initramfs"] = initramfs
@@ -933,7 +943,8 @@ def main() -> int:
             logs_dir / "system32.platform.terminal2",
             logs_dir / "system64.platform.terminal",
         ]
-        if args.mode == "simple":
+        if stop_on_marker:
+            print("[INFO] Marker early-stop enabled (timeout is an upper bound).")
             run_result = run_one_until_markers_multi(
                 cmd,
                 run_log,
@@ -948,6 +959,8 @@ def main() -> int:
                 args.timeout_sec,
             )
         else:
+            if args.mode == "simple":
+                print("[INFO] Marker early-stop disabled by --no-stop-on-marker.")
             run_result = run_one(cmd, run_log, args.timeout_sec)
         rv32_logs, rv64_logs = hybrid_terminal_logs(logs_dir)
 
