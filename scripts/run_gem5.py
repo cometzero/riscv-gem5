@@ -38,12 +38,11 @@ def auto_kernel_elf(kernel_hint: str) -> str:
     if hint.exists() and hint.name != "Image":
         return str(hint)
 
-    candidates: List[str] = []
-    for path in sorted(Path("sources/buildroot/output/build").glob("linux-*/vmlinux"), reverse=True):
-        candidates.append(str(path))
-    candidates.append("build/linux/vmlinux")
+    candidates: List[str] = ["build/linux/vmlinux"]
     if hint.name == "Image" and len(hint.parents) >= 4:
         candidates.append(str(hint.parents[3] / "vmlinux"))
+    for path in sorted(Path("sources/buildroot/output/build").glob("linux-*/vmlinux"), reverse=True):
+        candidates.append(str(path))
     return find_first_existing(candidates)
 
 
@@ -241,11 +240,16 @@ def max_ticks_for_mode(args: argparse.Namespace) -> int:
 def rv64_command(
     args: argparse.Namespace, config_path: Path, logs_dir: Path
 ) -> Tuple[List[str], str, str, str, str, bool]:
-    disk_image = args.disk_image or auto_disk_image()
     bootloader = args.bootloader or auto_bootloader()
     initramfs = args.initramfs or auto_initramfs()
     kernel_elf = auto_kernel_elf(args.kernel) or args.kernel
     use_conf_runtime = config_path.name == "riscv64_smp.py"
+    disk_image = args.disk_image
+    if not disk_image:
+        if use_conf_runtime and "root=/dev/ram" in args.command_line:
+            disk_image = ""
+        else:
+            disk_image = auto_disk_image()
     if use_conf_runtime:
         cpu_type = mixed_cpu_type(args.cpu_type)
         if args.cpu_type.lower() == "timingsimplecpu":
