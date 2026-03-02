@@ -15,6 +15,7 @@ import json
 import os
 import re
 import shlex
+import shutil
 import subprocess
 import sys
 import time
@@ -191,6 +192,16 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--max-ticks-simple", type=int, default=1_200_000_000_000)
     p.add_argument("--max-ticks-complex", type=int, default=2_000_000_000)
     p.add_argument("--timeout-sec", type=int, default=1800)
+    p.add_argument(
+        "--tmux-uart-view",
+        action="store_true",
+        help="Show riscv_hybrid UART logs in a split tmux session",
+    )
+    p.add_argument(
+        "--tmux-session-name",
+        default="",
+        help="tmux session name override for --tmux-uart-view",
+    )
     p.add_argument(
         "--no-stop-on-marker",
         action="store_true",
@@ -731,6 +742,83 @@ def run_one_until_markers_multi(
             time.sleep(2)
 
 
+def tmux_tail_command(path: Path, label: str) -> str:
+    q = shlex.quote(str(path))
+    script = f'echo "[{label}] {path}"; touch {q}; tail -n +1 -F {q}'
+    return f"bash -lc {shlex.quote(script)}"
+
+
+def start_hybrid_tmux_uart_view(
+    logs_dir: Path,
+    session_name: str,
+) -> Dict[str, object]:
+    if shutil.which("tmux") is None:
+        return {
+            "enabled": True,
+            "status": "unavailable",
+            "error": "tmux not found in PATH",
+        }
+
+    pane_logs = [
+        ("UART0 CPU0 AMP", logs_dir / "system32.platform.terminal"),
+        ("UART1 CPU1 AMP", logs_dir / "system32.platform.terminal1"),
+        ("UART2 CPU2-5 SMP", logs_dir / "system32.platform.terminal2"),
+        ("UART RV64 Linux", logs_dir / "system64.platform.terminal"),
+    ]
+    for _, path in pane_logs:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.touch(exist_ok=True)
+
+    has_session = subprocess.run(
+        ["tmux", "has-session", "-t", session_name],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    ).returncode == 0
+    if has_session:
+        subprocess.run(["tmux", "kill-session", "-t", session_name], check=True)
+
+    first_label, first_path = pane_logs[0]
+    subprocess.run(
+        [
+            "tmux",
+            "new-session",
+            "-d",
+            "-s",
+            session_name,
+            "-n",
+            "uart",
+            tmux_tail_command(first_path, first_label),
+        ],
+        check=True,
+    )
+
+    for label, path in pane_logs[1:]:
+        subprocess.run(
+            [
+                "tmux",
+                "split-window",
+                "-t",
+                f"{session_name}:0",
+                tmux_tail_command(path, label),
+            ],
+            check=True,
+        )
+
+    subprocess.run(
+        ["tmux", "select-layout", "-t", f"{session_name}:0", "tiled"],
+        check=True,
+    )
+    return {
+        "enabled": True,
+        "status": "created",
+        "session": session_name,
+        "window": "uart",
+        "attach_cmd": f"tmux attach -t {session_name}",
+        "logs": [str(path) for _, path in pane_logs],
+    }
+
+
 def mixed_terminal_logs(logs_dir: Path) -> List[Path]:
     candidates = sorted(
         path for path in logs_dir.glob("system.platform.terminal*") if path.is_file()
@@ -895,6 +983,7 @@ def main() -> int:
             args, config_path, logs_dir
         )
         stop_on_marker = args.mode == "simple" and (not args.no_stop_on_marker)
+        tmux_session_name = args.tmux_session_name or f"riscv-hybrid-uart-{ts}"
         manifest["commands"] = [cmd]
         manifest["stop_on_marker"] = stop_on_marker
         manifest["kernel_elf"] = kernel_elf
@@ -913,6 +1002,11 @@ def main() -> int:
                 "bootloader": bootloader,
                 "initramfs": initramfs,
             },
+        }
+        manifest["tmux_uart_view"] = {
+            "enabled": bool(args.tmux_uart_view),
+            "status": "disabled" if not args.tmux_uart_view else "pending",
+            "session": tmux_session_name if args.tmux_uart_view else "",
         }
 
         if not Path(kernel_elf).exists():
@@ -943,6 +1037,14 @@ def main() -> int:
             for item in missing:
                 print(f"[WARN] Missing path: {item}")
             print(f"[INFO] command={quoted(cmd)}")
+            if args.tmux_uart_view:
+                manifest["tmux_uart_view"] = {
+                    "enabled": True,
+                    "status": "planned",
+                    "session": tmux_session_name,
+                    "window": "uart",
+                    "attach_cmd": f"tmux attach -t {tmux_session_name}",
+                }
             manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
             print(f"[OK] Manifest: {manifest_path}")
             return 0
@@ -952,6 +1054,17 @@ def main() -> int:
                 print(f"[ERROR] Missing path: {item}", file=sys.stderr)
             manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
             return 2
+
+        if args.tmux_uart_view:
+            tmux_info = start_hybrid_tmux_uart_view(logs_dir, tmux_session_name)
+            manifest["tmux_uart_view"] = tmux_info
+            if tmux_info.get("status") == "created":
+                print(f"[INFO] tmux session created: {tmux_info['session']}")
+                print(f"[INFO] attach with: {tmux_info['attach_cmd']}")
+            else:
+                print(
+                    f"[WARN] tmux UART view unavailable: {tmux_info.get('error', tmux_info.get('status'))}"
+                )
 
         run_log = logs_dir / "run_riscv_hybrid.log"
         print(f"[INFO] Executing: {quoted(cmd)}")

@@ -87,12 +87,16 @@ cd /build/risc-v/riscv-gem5
 ./scripts/run_gem5.py --target riscv32_mixed --mode complex
 ./scripts/run_gem5.py --target riscv32_simple --mode simple
 ./scripts/run_gem5.py --target riscv_hybrid --mode simple
+# show hybrid UART logs in split tmux panes
+./scripts/run_gem5.py --target riscv_hybrid --mode simple --tmux-uart-view
 # keep hybrid running until timeout (disable marker early-stop)
 ./scripts/run_gem5.py --target riscv_hybrid --mode simple --timeout-sec 900 --no-stop-on-marker
 ```
 
 `riscv_hybrid` run prints staged status and also writes it to
 `stage_report` in the run manifest.
+When `--tmux-uart-view` is enabled, `run_gem5.py` prints an attach command
+like `tmux attach -t riscv-hybrid-uart-<timestamp>`.
 
 Use benchmark wrapper:
 

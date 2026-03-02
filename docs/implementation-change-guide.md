@@ -19,6 +19,12 @@ If you want a fixed-duration soak (no early-stop on markers):
 python3 scripts/run_gem5.py --target riscv_hybrid --mode simple --timeout-sec 900 --no-stop-on-marker
 ```
 
+If you want live UART log viewing in split tmux panes:
+
+```bash
+python3 scripts/run_gem5.py --target riscv_hybrid --mode simple --tmux-uart-view
+```
+
 ---
 
 ## 2) What is implemented now
@@ -155,4 +161,3 @@ git log --oneline --decorate -n 20
 - [ ] `checks.panic_free == true`
 - [ ] all `stage_report` entries are `passed=true`
 - [ ] evidence files kept under `workloads/results/<TS>/` and `build/logs/riscv_hybrid/<TS>/`
-

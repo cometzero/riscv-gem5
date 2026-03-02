@@ -134,6 +134,18 @@ cd /build/risc-v/riscv-gem5
 python3 scripts/run_gem5.py --target riscv_hybrid --mode simple
 ```
 
+tmux split 창에서 UART 로그를 보고 싶으면:
+
+```bash
+python3 scripts/run_gem5.py --target riscv_hybrid --mode simple --tmux-uart-view
+```
+
+실행 후 출력되는 attach 명령으로 접속:
+
+```bash
+tmux attach -t riscv-hybrid-uart-<timestamp>
+```
+
 기본 동작은 성공 마커(RV32 DONE/ROLE_SYNC + RV64 strict markers)를 찾으면
 `--timeout-sec` 전에 조기 종료합니다. 300초 동안 계속 실행하려면:
 

@@ -11,6 +11,7 @@ python3 scripts/run_gem5.py --target riscv64_smp --mode simple --timestamp "${TS
 python3 scripts/run_gem5.py --target riscv32_mixed --mode complex --timestamp "${TS}" --dry-run
 python3 scripts/run_gem5.py --target riscv32_simple --mode simple --timestamp "${TS}" --dry-run
 python3 scripts/run_gem5.py --target riscv_hybrid --mode simple --timestamp "${TS}" --dry-run
+python3 scripts/run_gem5.py --target riscv_hybrid --mode simple --timestamp "${TS}" --dry-run --tmux-uart-view --tmux-session-name "hybrid-dry"
 
 echo "[INFO] dry-run benchmark wrapper"
 scripts/run_bench.sh --target riscv64_smp --mode simple --timestamp "${TS}" --dry-run
@@ -67,6 +68,18 @@ assert_file "workloads/results/${TS}/bench_riscv32_simple_simple.json"
 assert_file "workloads/results/${TS}/summary_riscv64_smp_simple.md"
 assert_file "workloads/results/${TS}/summary_riscv32_mixed_complex.md"
 assert_file "workloads/results/${TS}/summary_riscv32_simple_simple.md"
+
+python3 - <<'PY' "${TS}"
+import json, sys
+ts = sys.argv[1]
+path = f"workloads/results/{ts}/run_gem5_riscv_hybrid_simple.json"
+data = json.load(open(path, encoding="utf-8"))
+tmux = data.get("tmux_uart_view", {})
+assert tmux.get("enabled") is True, tmux
+assert tmux.get("status") == "planned", tmux
+assert tmux.get("session") == "hybrid-dry", tmux
+print("[OK] hybrid tmux dry-run contract")
+PY
 
 assert_link_target "workloads/results/latest" "${TS}"
 assert_link_target "workloads/results/latest-riscv64_smp-simple" "${TS}"
