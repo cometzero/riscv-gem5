@@ -26,6 +26,7 @@ python3 scripts/run_gem5.py --target riscv_hybrid --mode simple --tmux-uart-view
 ```
 
 This mode auto-launches and auto-attaches to the tmux UART session.
+The UART tmux panes are bound to the run process lifetime and auto-close on exit.
 
 ---
 

@@ -98,6 +98,7 @@ cd /build/risc-v/riscv-gem5
 When `--tmux-uart-view` is enabled, `run_gem5.py` auto-launches tmux and
 attaches to the UART split session. If detached, reattach with:
 `tmux attach -t riscv-hybrid-uart-<timestamp>`.
+The tmux session closes automatically when the simulation process exits.
 
 Use benchmark wrapper:
 

@@ -147,6 +147,8 @@ detach 후 재접속:
 tmux attach -t riscv-hybrid-uart-<timestamp>
 ```
 
+시뮬레이션이 끝나면 UART tail pane이 자동 종료되어 tmux 세션도 함께 종료됩니다.
+
 기본 동작은 성공 마커(RV32 DONE/ROLE_SYNC + RV64 strict markers)를 찾으면
 `--timeout-sec` 전에 조기 종료합니다. 300초 동안 계속 실행하려면:
 

@@ -742,15 +742,19 @@ def run_one_until_markers_multi(
             time.sleep(2)
 
 
-def tmux_tail_command(path: Path, label: str) -> str:
+def tmux_tail_command(path: Path, label: str, watch_pid: int | None = None) -> str:
     q = shlex.quote(str(path))
-    script = f'echo "[{label}] {path}"; touch {q}; tail -n +1 -F {q}'
+    tail_cmd = f"tail -n +1 -F {q}"
+    if watch_pid is not None:
+        tail_cmd = f"tail --pid={watch_pid} -n +1 -F {q}"
+    script = f'echo "[{label}] {path}"; touch {q}; {tail_cmd}'
     return f"bash -lc {shlex.quote(script)}"
 
 
 def start_hybrid_tmux_uart_view(
     logs_dir: Path,
     session_name: str,
+    watch_pid: int | None = None,
 ) -> Dict[str, object]:
     if shutil.which("tmux") is None:
         return {
@@ -788,7 +792,7 @@ def start_hybrid_tmux_uart_view(
             session_name,
             "-n",
             "uart",
-            tmux_tail_command(first_path, first_label),
+            tmux_tail_command(first_path, first_label, watch_pid),
         ],
         check=True,
     )
@@ -800,7 +804,7 @@ def start_hybrid_tmux_uart_view(
                 "split-window",
                 "-t",
                 f"{session_name}:0",
-                tmux_tail_command(path, label),
+                tmux_tail_command(path, label, watch_pid),
             ],
             check=True,
         )
@@ -874,13 +878,15 @@ def maybe_launch_tmux_wrapper(
 
     if not session_ready:
         rc = child.poll()
-        fp.close()
         if rc is None:
             print(
                 "[WARN] tmux session was not created within 30s. "
                 f"check child log: {wrapper_log}"
             )
-            return 0
+            rc = child.wait()
+        if int(rc) != 0:
+            print(f"[ERROR] hybrid run failed before tmux attach. see: {wrapper_log}")
+        fp.close()
         return int(rc)
 
     print(f"[INFO] tmux session ready: {session_name}")
@@ -889,15 +895,9 @@ def maybe_launch_tmux_wrapper(
     else:
         subprocess.run(["tmux", "attach", "-t", session_name], check=False)
 
-    rc = child.poll()
-    if rc is None:
-        print(
-            "[INFO] wrapper child is still running after tmux detach; "
-            "follow logs under build/logs/riscv_hybrid/<timestamp>/"
-        )
-        fp.close()
-        return 0
-
+    rc = child.wait()
+    if int(rc) != 0:
+        print(f"[ERROR] hybrid run failed. see: {wrapper_log}")
     fp.close()
     return int(rc)
 
@@ -1144,7 +1144,11 @@ def main() -> int:
             return 2
 
         if args.tmux_uart_view:
-            tmux_info = start_hybrid_tmux_uart_view(logs_dir, tmux_session_name)
+            tmux_info = start_hybrid_tmux_uart_view(
+                logs_dir,
+                tmux_session_name,
+                watch_pid=os.getpid(),
+            )
             manifest["tmux_uart_view"] = tmux_info
             if tmux_info.get("status") == "created":
                 print(f"[INFO] tmux session created: {tmux_info['session']}")
