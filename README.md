@@ -95,8 +95,9 @@ cd /build/risc-v/riscv-gem5
 
 `riscv_hybrid` run prints staged status and also writes it to
 `stage_report` in the run manifest.
-When `--tmux-uart-view` is enabled, `run_gem5.py` prints an attach command
-like `tmux attach -t riscv-hybrid-uart-<timestamp>`.
+When `--tmux-uart-view` is enabled, `run_gem5.py` auto-launches tmux and
+attaches to the UART split session. If detached, reattach with:
+`tmux attach -t riscv-hybrid-uart-<timestamp>`.
 
 Use benchmark wrapper:
 

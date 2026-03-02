@@ -140,7 +140,8 @@ tmux split 창에서 UART 로그를 보고 싶으면:
 python3 scripts/run_gem5.py --target riscv_hybrid --mode simple --tmux-uart-view
 ```
 
-실행 후 출력되는 attach 명령으로 접속:
+위 명령은 tmux 세션을 자동 시작하고 자동 attach합니다.
+detach 후 재접속:
 
 ```bash
 tmux attach -t riscv-hybrid-uart-<timestamp>

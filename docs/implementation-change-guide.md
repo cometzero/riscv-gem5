@@ -25,6 +25,8 @@ If you want live UART log viewing in split tmux panes:
 python3 scripts/run_gem5.py --target riscv_hybrid --mode simple --tmux-uart-view
 ```
 
+This mode auto-launches and auto-attaches to the tmux UART session.
+
 ---
 
 ## 2) What is implemented now

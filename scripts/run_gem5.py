@@ -819,6 +819,89 @@ def start_hybrid_tmux_uart_view(
     }
 
 
+def maybe_launch_tmux_wrapper(
+    args: argparse.Namespace,
+    ts: str,
+    logs_dir: Path,
+) -> int | None:
+    if not args.tmux_uart_view:
+        return None
+    if args.target != "riscv_hybrid":
+        return None
+    if args.dry_run:
+        return None
+    if os.environ.get("RUN_GEM5_TMUX_WRAPPER") == "1":
+        return None
+    if shutil.which("tmux") is None:
+        print("[WARN] --tmux-uart-view requested, but tmux is not installed.")
+        return None
+
+    session_name = args.tmux_session_name or f"riscv-hybrid-uart-{ts}"
+    child_argv = list(sys.argv[1:])
+    if "--timestamp" not in child_argv and all(not a.startswith("--timestamp=") for a in child_argv):
+        child_argv.extend(["--timestamp", ts])
+
+    child_cmd = [sys.executable, str(Path(__file__).resolve()), *child_argv]
+    wrapper_log = logs_dir / "tmux-wrapper-child.log"
+    wrapper_log.parent.mkdir(parents=True, exist_ok=True)
+    fp = wrapper_log.open("w", encoding="utf-8")
+    child_env = os.environ.copy()
+    child_env["RUN_GEM5_TMUX_WRAPPER"] = "1"
+    child = subprocess.Popen(
+        child_cmd,
+        stdout=fp,
+        stderr=subprocess.STDOUT,
+        env=child_env,
+    )
+
+    print(f"[INFO] wrapper child pid={child.pid} log={wrapper_log}")
+
+    deadline = time.monotonic() + 30
+    session_ready = False
+    while time.monotonic() < deadline:
+        has_session = subprocess.run(
+            ["tmux", "has-session", "-t", session_name],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        ).returncode == 0
+        if has_session:
+            session_ready = True
+            break
+        if child.poll() is not None:
+            break
+        time.sleep(0.2)
+
+    if not session_ready:
+        rc = child.poll()
+        fp.close()
+        if rc is None:
+            print(
+                "[WARN] tmux session was not created within 30s. "
+                f"check child log: {wrapper_log}"
+            )
+            return 0
+        return int(rc)
+
+    print(f"[INFO] tmux session ready: {session_name}")
+    if os.environ.get("TMUX"):
+        subprocess.run(["tmux", "switch-client", "-t", session_name], check=False)
+    else:
+        subprocess.run(["tmux", "attach", "-t", session_name], check=False)
+
+    rc = child.poll()
+    if rc is None:
+        print(
+            "[INFO] wrapper child is still running after tmux detach; "
+            "follow logs under build/logs/riscv_hybrid/<timestamp>/"
+        )
+        fp.close()
+        return 0
+
+    fp.close()
+    return int(rc)
+
+
 def mixed_terminal_logs(logs_dir: Path) -> List[Path]:
     candidates = sorted(
         path for path in logs_dir.glob("system.platform.terminal*") if path.is_file()
@@ -845,6 +928,11 @@ def main() -> int:
     results_dir = Path(args.results_root) / ts
     logs_dir = Path(args.log_root) / args.target / ts
     ensure_dirs(results_dir, logs_dir)
+
+    wrapper_rc = maybe_launch_tmux_wrapper(args, ts, logs_dir)
+    if wrapper_rc is not None:
+        return wrapper_rc
+
     latest_links = update_latest_symlinks(
         Path(args.results_root),
         Path(args.log_root),
